@@ -16,14 +16,15 @@ export async function saveConnection(connection:SheetConnection){const data=JSON
 export type Reservation={id:string;date:string;start:string;end:string;court:string;capacity:number|null;kind?:'practice';host:string;players:string[];notes:string;version:number};
 export type SheetResult={ok:true;apiVersion:2;sheetId:string;matches:Reservation[];roster:string[]};
 export async function invokeSheet(connection:SheetConnection,payload:Record<string,unknown>):Promise<SheetResult>{
- const response=await fetch(connection.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,secret:connection.secret}),redirect:'follow',signal:AbortSignal.timeout(25000)});
+ const response=await fetch(connection.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,secret:connection.secret}),redirect:'follow',signal:AbortSignal.timeout(25000)}).catch(error=>{throw new Error(error?.name==='TimeoutError'?'Google Sheets took too long to respond. Refresh to check whether your change saved.':'Google Sheets is unavailable. Try refreshing.');});
  if(!response.ok)throw new Error('Google Sheets is unavailable. Try refreshing.');
  let data:Record<string,unknown>;try{data=await response.json() as Record<string,unknown>;}catch{throw new Error('Google returned a sign-in page. Check the web app deployment settings.');}
- if(data.ok!==true)throw new Error(typeof data.error==='string'?data.error.slice(0,300):'Google Sheets did not confirm the update.');
+ if(data.ok!==true)throw new Error(typeof data.error==='string'?data.error.replaceAll(expectedSheetId(),'[sheet]').slice(0,300):'Google Sheets did not confirm the update.');
  if(data.apiVersion!==2)throw new Error('Update the Google connection script from Connect Google Sheet, then deploy a new version of the existing web app.');
  if(data.sheetId!==expectedSheetId())throw new Error('This connection points to a different spreadsheet.');
  if(!Array.isArray(data.matches)||!Array.isArray(data.roster)||data.matches.length>10000||data.roster.length>500)throw new Error('Unexpected reservation data from Google Sheets.');
- for(const row of data.matches){if(!row||typeof row.id!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(row.date)||!/^\d{2}:\d{2}$/.test(row.start)||!/^\d{2}:\d{2}$/.test(row.end)||typeof row.host!=='string'||typeof row.court!=='string'||!Array.isArray(row.players)||!row.players.every((p:unknown)=>typeof p==='string')||!(row.kind==='practice'&&row.capacity===null||Number.isInteger(row.capacity)&&row.capacity>=0&&row.capacity<=500))throw new Error('A reservation row has invalid values. Check the spreadsheet.');}
+ const invalid=(row:any)=>!row||typeof row.id!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(row.date)||!/^\d{2}:\d{2}$/.test(row.start)||!/^\d{2}:\d{2}$/.test(row.end)||typeof row.host!=='string'||typeof row.court!=='string'||!Array.isArray(row.players)||!row.players.every((p:unknown)=>typeof p==='string')||!(row.kind==='practice'&&row.capacity===null||Number.isInteger(row.capacity)&&row.capacity>=0&&row.capacity<=500);
+ const rows=data.matches.filter(row=>!invalid(row));if(rows.length<data.matches.length)console.error('Skipped reservation rows with invalid values',data.matches.length-rows.length);data.matches=rows;
  if(!data.roster.every((name:unknown)=>typeof name==='string'&&name.length<=120))throw new Error('Invalid roster values.');
  return data as unknown as SheetResult;
 }

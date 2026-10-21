@@ -1,6 +1,6 @@
 import {sameOrigin} from '../lib/sheet-connection';
 import {botCookie,hasBotAccess,issueBotSession,passwordMatches} from '../lib/bot-access';
-import {attemptKey,attemptsAllowed,failedAttempt,clearAttempts} from '../lib/admin-access';
+import {attemptKey,attemptsAllowed,clearAttempts} from '../lib/admin-access';
 function page(unlocked=false,error='',status=200){
  const content=unlocked?`<h2>Pickleball automation bot <span class="beta-label">[BETA]</span></h2>
  <p class="muted">Your download hub for the club’s court reservation bot.</p>
@@ -24,7 +24,7 @@ export async function POST(request:Request){
   // Same throttle as owner sign-in, keyed separately so bot guesses never lock out the owner.
   const key='bot:'+await attemptKey(request);
   if(!await attemptsAllowed(key))return page(false,'Too many attempts. Try again in 15 minutes.',429);
-  if(!await passwordMatches(form.get('password')||'')){await failedAttempt(key);return page(false,'Incorrect password. Try again.',401);}
+  if(!await passwordMatches(form.get('password')||''))return page(false,'Incorrect password. Try again.',401);
   await clearAttempts(key);
   return new Response(null,{status:303,headers:{Location:'/bot','Set-Cookie':botCookie(await issueBotSession(scope)),'Cache-Control':'private, no-store'}});
  }catch{return page(false,'Bot access is temporarily unavailable.',503);}
