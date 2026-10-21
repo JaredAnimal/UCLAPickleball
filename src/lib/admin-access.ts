@@ -44,7 +44,11 @@ export async function newOwnerCookie() {
 }
 export async function attemptKey(request: Request) {
   // Cloudflare supplies this header in production. Store only a digest, with a short expiry.
-  return digest(request.headers.get('cf-connecting-ip') || 'local-development');
+  // IPv6 clients usually control a whole /64, so throttle by that prefix rather than the full address.
+  const ip = (request.headers.get('cf-connecting-ip') || 'local-development').toLowerCase();
+  if (!ip.includes(':') || ip.includes('.')) return digest(ip);
+  const [head, tail = ''] = ip.split('::'), left = head ? head.split(':') : [], right = tail ? tail.split(':') : [];
+  return digest([...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right].slice(0, 4).map(h => parseInt(h, 16).toString(16)).join(':'));
 }
 // Counts the attempt before the password is checked, so parallel guesses can't all slip under the limit.
 export async function attemptsAllowed(key: string) {

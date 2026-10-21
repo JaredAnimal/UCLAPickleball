@@ -5,7 +5,7 @@ export async function POST(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
  try{
   const raw=await request.text();if(raw.length>1000)return json({error:'Invalid player name.'},400);
-  const p=JSON.parse(raw),connection=await loadConnection();
+  const p=JSON.parse(raw)??{},connection=await loadConnection();
   const roster=connection?(await invokeSheet(connection,{action:'list'})).roster:ROSTER;
   const player=canonicalPlayer(p.player,roster);
   if(!player)return json({error:'Choose a name from the club roster or continue as guest.'},403);

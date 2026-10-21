@@ -35,6 +35,12 @@ passed('separate owner password issues an expiring protected session and rejects
 for(let i=0;i<5;i++)assert.equal((await publicCall('/admin',{method:'POST',headers:{'cf-connecting-ip':'192.0.2.1'},body:'password=wrong'})).status,401);
 assert.equal((await publicCall('/admin',{method:'POST',headers:{'cf-connecting-ip':'192.0.2.1'},body:'password='+ownerPassword})).status,429);
 passed('owner login throttles repeated failures');
+for(let i=0;i<5;i++)assert.equal((await publicCall('/admin',{method:'POST',headers:{'cf-connecting-ip':'2001:db8:1:2::1'},body:'password=wrong'})).status,401);
+assert.equal((await publicCall('/admin',{method:'POST',headers:{'cf-connecting-ip':'2001:0DB8:1:2:ffff::9'},body:'password='+ownerPassword})).status,429);
+passed('owner login throttles a whole IPv6 /64');
+await db.prepare('UPDATE admin_attempts SET expires=0').run();
+assert.equal((await publicCall('/admin',{method:'POST',headers:{'cf-connecting-ip':'192.0.2.1'},body:'password='+ownerPassword})).status,303);
+passed('owner login unlocks once the throttle window ends');
 response=await call('/api/sheets-connection');const setup=await response.json();assert.equal(response.status,200);assert.ok(setup.script.includes('function doPost'));assert.equal(setup.configured,false);assert.ok(!JSON.stringify(setup).includes(key));passed('owner-only setup remains available without exposing runtime secrets');
 response=await call('/api/sheets-connection',{method:'POST',body:JSON.stringify({endpoint:'https://other.invalid/exec',secret:'a'.repeat(64)})});assert.equal(response.status,400);passed('connection rejects non-Google endpoints');
 for(const path of ['/api/reservations','/api/player-session'])assert.equal((await publicCall(path,{method:'POST',headers:{Origin:'https://other.invalid','Sec-Fetch-Site':'cross-site'},body:'{}'})).status,403);passed('cross-site session and reservation requests are rejected');
@@ -55,9 +61,12 @@ response=await call('/admin',{method:'POST',body:'action=logout'});assert.equal(
 for(const asset of ['/pickleball-calendar.js','/pickleball-calendar.css','/pickleball.svg','/pickleball-setup.js']){response=await publicCall(asset);assert.equal(response.status,200,asset);assert.equal(response.headers.get('x-content-type-options'),'nosniff');}assert.equal((await publicCall('/missing')).status,404);assert.equal((await publicCall('/api/reservations',{method:'DELETE'})).status,405);passed('standalone Worker serves calendar assets and handles unknown routes and methods');
 response=await publicCall('/',{method:'HEAD'});assert.equal(response.status,200);assert.equal(await response.text(),'');passed('HEAD requests return headers without a body');
 const row=(id,date)=>({id,date,start:'18:00',end:'20:00',court:'Court',capacity:2,host:'Alex Example',players:[],notes:'',version:1});
-googleReply={ok:true,apiVersion:2,sheetId,matches:[row('typed-by-hand','10/25/2025'),row('valid-row','2026-10-25')],roster:['Alex Example']};
-response=await publicCall('/api/reservations');assert.equal(response.status,200);assert.deepEqual((await response.json()).matches.map(m=>m.id),['valid-row']);passed('one hand-edited bad row does not take the calendar down');
+googleReply={ok:true,apiVersion:2,sheetId,matches:[row('typed-by-hand','10/25/2025'),row('valid-row','2026-10-25'),{...row('practice-2026-10-22','2026-10-22'),kind:'practice',capacity:null}],roster:['Alex Example','x'.repeat(121)]};
+response=await publicCall('/api/reservations');assert.equal(response.status,200);{const body=await response.json();assert.deepEqual(body.matches.map(m=>m.id),['valid-row','practice-2026-10-22']);assert.deepEqual(body.roster,['Alex Example']);assert.equal(body.sheetId,undefined);}passed('one hand-edited bad row or roster cell does not take the calendar down');
 googleReply={ok:false,error:`Service Spreadsheets failed while accessing document with id ${sheetId}.`};
-response=await publicCall('/api/reservations');assert.equal(response.status,503);assert.ok(!(await response.text()).includes(sheetId));passed('Google errors never reveal the spreadsheet ID');
+response=await publicCall('/api/reservations');assert.equal(response.status,503);{const text=await response.text();assert.ok(!text.includes(sheetId));assert.match(text,/\[sheet\]/);}passed('Google errors never reveal the spreadsheet ID');
+assert.equal((await publicCall('/api/player-session',{method:'POST',body:'null'})).status,403);
+{const {token}=await login('Alex Example');for(const body of ['null',JSON.stringify({action:'create',player:'Alex Example',requestId:'array_times_request',reservation:{date:'2099-10-21',start:['18:00'],end:['20:00'],court:'Court',capacity:2,notes:''}})])assert.equal((await publicCall('/api/reservations',{method:'POST',headers:{Authorization:'Bearer '+token},body})).status,400);}
+passed('null bodies and non-string times are rejected as bad requests');
 console.log(`${count} production API checks passed.`);
 }finally{await mf.dispose();}
