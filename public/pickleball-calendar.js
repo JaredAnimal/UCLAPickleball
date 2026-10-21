@@ -1,6 +1,6 @@
 const CONFIG=JSON.parse(document.getElementById('calendarConfig').textContent);
 let ROSTER=CONFIG.roster;
-const $=id=>document.getElementById(id),KEY='ucla-pickleball-matches-v1',USER_KEY='ucla-pickleball-user-v1',PENDING_KEY='ucla-pickleball-pending-v1';
+const $=id=>document.getElementById(id),KEY='ucla-pickleball-matches-v1',USER_KEY='ucla-pickleball-user-v1',PENDING_KEY='ucla-pickleball-pending-v1',TOKEN_KEY='ucla-pickleball-session-v1';
 const norm=s=>s.trim().replace(/\s+/g,' ').toLowerCase();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const guestSuffix=' [guest]';
@@ -22,6 +22,7 @@ function matchesForDate(date,rows){const practice=practiceForDate(date),regular=
 const newId=()=>typeof crypto.randomUUID==='function'?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,busy=false,loadError='',matches=[],lastToday=localToday();
 try{user=localStorage.getItem(USER_KEY)||''}catch{}
+try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 if(ROSTER.length&&!ROSTER.includes(user)&&!isGuest(user))user='';
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5000);}
 function readLocal(){const rows=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(rows))throw Error('Saved reservations could not be read.');return rows;}
@@ -33,7 +34,7 @@ function showNotice(){
 }
 async function loadReservations(silent=false){
  if(loading||busy)return;loading=true;$('refresh').disabled=true;
- try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;matches=configured?data.matches:[];loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}$('capacity').max=Math.max(0,ROSTER.length-1);render();}
+ try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;matches=configured?data.matches:[];loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}$('capacity').max=Math.max(0,ROSTER.length-1);render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
  catch(error){loadError=error.message||'Could not load reservations.';showNotice();render();if(!silent)toast(loadError);}
  finally{loading=false;setBusy(false);}
 }
@@ -42,7 +43,7 @@ async function ensurePlayerSession(name){
  if(playerToken&&tokenPlayer===name&&tokenExpires>Date.now()+60000)return playerToken;
  const response=await fetch('/api/player-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player:name})});
  const data=await response.json();if(!response.ok||data.player!==name||typeof data.token!=='string')throw Error(data.error||'Could not confirm your player name. Please retry.');
- playerToken=data.token;tokenPlayer=data.player;tokenExpires=data.expires*1000;return playerToken;
+ playerToken=data.token;tokenPlayer=data.player;tokenExpires=data.expires*1000;try{localStorage.setItem(TOKEN_KEY,JSON.stringify({token:playerToken,player:tokenPlayer,expires:tokenExpires}))}catch{}return playerToken;
 }
 function setLoginMode(mode){loginMode=mode;$('loginTitle').textContent=mode==='guest'?'Welcome, guest.':'Hey, Bruin.';$('loginIntro').textContent=mode==='guest'?'Enter any first and last name. Your name will show a red [guest] tag on signups.':'Enter your name as it appears on the club roster to join the calendar.';$('loginSubmit').textContent=mode==='guest'?'Enter as guest':'Enter calendar';$('guestMode').textContent=mode==='guest'?'Use club roster':'Continue as guest';$('loginError').textContent='';}
 function openLogin(){if(loginPending)return;setLoginMode('member');$('loginCancel').hidden=!user;$('loginForm').reset();if(!$('login').open)$('login').showModal();}
@@ -101,7 +102,7 @@ async function mutate(action,payload){
  try{
   const signature=JSON.stringify({action,player:user,...payload});let pending;try{pending=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
   const requestId=pending?.signature===signature?pending.requestId:newId();try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
-  if(configured){const token=await ensurePlayerSession(user);const response=await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:user,requestId,...payload})});const data=await response.json();if(response.status===401){playerToken='';tokenExpires=0;}if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
+  if(configured){const token=await ensurePlayerSession(user);const response=await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:user,requestId,...payload})});const data=await response.json();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}}if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
   else{const operation=()=>{const rows=readLocal();applyLocal(rows,action,payload,requestId);localStorage.setItem(KEY,JSON.stringify(rows));matches=rows;};if(navigator.locks)await navigator.locks.request(KEY,operation);else operation();}
   try{sessionStorage.removeItem(PENDING_KEY)}catch{}render();return true;
  }catch(error){toast(error.message||'Could not confirm the update. Refresh before retrying.');return false;}
