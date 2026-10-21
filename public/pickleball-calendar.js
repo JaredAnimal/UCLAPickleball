@@ -7,7 +7,7 @@ const guestSuffix=' [guest]';
 const isGuest=name=>typeof name==='string'&&name.endsWith(guestSuffix)&&name.length<=109&&name.slice(0,-guestSuffix.length).trim().split(/\s+/).length>=2&&!/[\[\]\p{C}]/u.test(name.slice(0,-guestSuffix.length));
 const playerName=name=>isGuest(name)?name.slice(0,-guestSuffix.length):name;
 const playerHtml=name=>esc(playerName(name))+(isGuest(name)?' <span class="guest-tag">[guest]</span>':'');
-let loginMode='member',loginPending=false,playerToken='',tokenPlayer='',tokenExpires=0;
+let loginMode='member',loginPending=false,playerToken='',tokenPlayer='',tokenExpires=0,sessionRequest=null,saveCount=0;
 const localToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateObj=s=>new Date(s+'T12:00:00Z');
 const dateKey=d=>`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
@@ -24,24 +24,27 @@ let user='',selected=localToday(),windowStart=localToday(),editing=null,editingV
 try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 if(ROSTER.length&&!ROSTER.includes(user)&&!isGuest(user))user='';
+const problem=(error,fallback)=>error instanceof TypeError?'Network problem. Check your connection and try again.':error?.message||fallback;
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5000);}
 function setBusy(value){busy=value;$('post').disabled=value||!loaded||!!loadError;$('refresh').disabled=value||loading;const submit=$('matchForm').querySelector('button.primary');submit.disabled=value;submit.textContent=value?'Saving…':'Save reservation';}
 function showNotice(){
- const notice=$('syncNotice');notice.hidden=true;notice.className='notice error';notice.replaceChildren();
- if(loadError){notice.hidden=false;notice.textContent=loadError+(loaded?' Displaying the last loaded reservations. Saving is paused.':' Reservations could not be loaded.');const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>loadReservations();notice.append(retry);}
+ const notice=$('syncNotice'),text=loadError&&loadError+(loaded?' Displaying the last loaded reservations. Saving is paused.':' Reservations could not be loaded.');if(notice.dataset.text===text)return;notice.dataset.text=text;notice.hidden=true;notice.className='notice error';notice.replaceChildren();
+ if(loadError){notice.hidden=false;notice.textContent=text;const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>loadReservations();notice.append(retry);}
 }
 async function loadReservations(silent=false){
- if(loading||busy)return;loading=true;$('refresh').disabled=true;
- try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy)matches=configured?data.matches:[];if(editing&&$('editor').open)editingVersion=matches.find(m=>m.id===editing)?.version??editingVersion;loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}$('capacity').max=Math.max(0,ROSTER.length-1);render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
- catch(error){loadError=error.message||'Could not load reservations.';showNotice();render();if(!silent)toast(loadError);}
+ if(loading||busy)return;loading=true;const saves=saveCount;$('refresh').disabled=true;
+ try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy&&saves===saveCount)matches=configured?data.matches:[];if(editing&&$('editor').open)editingVersion=matches.find(m=>m.id===editing)?.version??editingVersion;loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}$('capacity').max=Math.max(0,ROSTER.length-1);render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
+ catch(error){loadError=problem(error,'Could not load reservations.');showNotice();render();if(!silent)toast(loadError);}
  finally{loading=false;setBusy(busy);}
 }
 function requireUser(){if(user)return true;openLogin();return false;}
 async function ensurePlayerSession(name){
  if(playerToken&&tokenPlayer===name&&tokenExpires>Date.now()+60000)return playerToken;
+ if(sessionRequest?.name===name)return sessionRequest.promise;const promise=(async()=>{
  const response=await fetch('/api/player-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player:name})});
- const data=await response.json();if(!response.ok||data.player!==name||typeof data.token!=='string')throw Error(data.error||'Could not confirm your player name. Please retry.');
- playerToken=data.token;tokenPlayer=data.player;tokenExpires=data.expires*1000;try{localStorage.setItem(TOKEN_KEY,JSON.stringify({token:playerToken,player:tokenPlayer,expires:tokenExpires}))}catch{}return playerToken;
+ const data=await response.json().catch(()=>({}));if(!response.ok||data.player!==name||typeof data.token!=='string')throw Error(data.error||'Could not confirm your player name. Please retry.');
+ playerToken=data.token;tokenPlayer=data.player;tokenExpires=data.expires*1000;try{localStorage.setItem(TOKEN_KEY,JSON.stringify({token:playerToken,player:tokenPlayer,expires:tokenExpires}))}catch{}return playerToken;})();
+ sessionRequest={name,promise};try{return await promise}finally{if(sessionRequest?.promise===promise)sessionRequest=null}
 }
 function setLoginMode(mode){loginMode=mode;$('loginTitle').textContent=mode==='guest'?'Welcome, guest.':'Hey, Bruin.';$('loginIntro').textContent=mode==='guest'?'Enter any first and last name. Your name will show a red [guest] tag on signups.':'Enter your name as it appears on the club roster to join the calendar.';$('loginSubmit').textContent=mode==='guest'?'Enter as guest':'Enter calendar';$('guestMode').textContent=mode==='guest'?'Use club roster':'Continue as guest';$('loginError').textContent='';}
 function openLogin(){if(loginPending)return;setLoginMode('member');$('loginCancel').hidden=!user;$('loginForm').reset();if(!$('login').open)$('login').showModal();}
@@ -49,12 +52,12 @@ $('login').addEventListener('cancel',event=>{if(!user||loginPending)event.preven
 $('loginCancel').onclick=()=>{if(user)$('login').close()};
 $('switchUser').onclick=openLogin;
 $('guestMode').onclick=()=>{setLoginMode(loginMode==='guest'?'member':'guest');$('first').focus();};
-$('loginForm').onsubmit=async event=>{event.preventDefault();if(loginPending)return;if(!loaded||!configured||loadError){$('loginError').textContent=loadError||'Loading the club roster. Please wait and try again.';return;}const first=$('first').value.trim().replace(/\s+/g,' '),last=$('last').value.trim().replace(/\s+/g,' ');let name;
+$('loginForm').onsubmit=async event=>{event.preventDefault();if(loginPending)return;if(!loaded||!configured||loadError){$('loginError').textContent=loadError||'Loading the club roster. Please wait and try again.';loadReservations(true);return;}const first=$('first').value.trim().replace(/\s+/g,' '),last=$('last').value.trim().replace(/\s+/g,' ');let name;
  if(loginMode==='guest'){name=first+' '+last+guestSuffix;if(!first||!last||first.length>50||last.length>50||!isGuest(name)){$('loginError').textContent='Enter a first and last name without brackets or control characters.';return;}}
  else{name=ROSTER.find(n=>norm(n)===norm(first+' '+last));if(!name){$('loginError').textContent='Name not found. Check the club roster or continue as guest.';return;}}
  loginPending=true;$('loginSubmit').disabled=true;$('guestMode').disabled=true;$('loginCancel').disabled=true;$('loginSubmit').textContent='Checking name…';
  try{await ensurePlayerSession(name);user=name;try{localStorage.setItem(USER_KEY,user)}catch{toast('Your browser cannot remember your player name.')}$('login').close();render();}
- catch(error){$('loginError').textContent=error.message||'Could not confirm your player name. Please retry.';}
+ catch(error){$('loginError').textContent=problem(error,'Could not confirm your player name. Please retry.');}
  finally{loginPending=false;$('loginSubmit').disabled=false;$('guestMode').disabled=false;$('loginCancel').disabled=false;$('loginSubmit').textContent=loginMode==='guest'?'Enter as guest':'Enter calendar';}
 };
 function displayRange(){const last=addDays(windowStart,5);const sameMonth=windowStart.slice(0,7)===last.slice(0,7);const first=dayLabel(windowStart,{month:'short',day:'numeric',...(windowStart.slice(0,4)!==last.slice(0,4)?{year:'numeric'}:{})});return first+' – '+(sameMonth?dateObj(last).getUTCDate()+', '+last.slice(0,4):dayLabel(last,{month:'short',day:'numeric',year:'numeric'}));}
@@ -65,7 +68,7 @@ function render(){
   const key=addDays(windowStart,i),today=key===localToday(),dayMatches=matchesForDate(key,matches);
   const button=document.createElement('button');button.className='day'+(key===selected?' selected':'')+(today?' today':'');button.setAttribute('aria-label',`${dayLabel(key,{weekday:'long',month:'short',day:'numeric',year:'numeric'})}, ${dayMatches.length} reservations`);button.setAttribute('aria-pressed',String(key===selected));
   button.innerHTML=`<span class="dayheading"><span class="dayname">${today?'Today':dayLabel(key,{weekday:'short'})}</span><span class="daynum">${dateObj(key).getUTCDate()}</span><span class="daycount">${dayMatches.length} reservation${dayMatches.length===1?'':'s'}</span></span>`+dayMatches.slice(0,4).map(m=>{const mine=m.host===user||m.players.includes(user),practice=isPractice(m),full=!practice&&m.players.length>=m.capacity;return `<span class="chip ${mine?'mine':full?'full':''}"><span class="chiptime">${esc(timeLabel(m.start))}</span>${practice?'Club practice':esc(playerName(m.host).split(' ')[0])+(isGuest(m.host)?' <span class="guest-tag">[guest]</span>':'')} · ${practice?'Unlimited':full?'Full':m.capacity-m.players.length+' open'}</span>`}).join('')+(dayMatches.length>4?`<span class="small">+${dayMatches.length-4} more</span>`:dayMatches.length?'':`<span class="dayempty">${loaded?'No matches yet':'Loading…'}</span>`);
-  button.onclick=()=>{selected=key;render()};$('calendar').append(button);
+  button.onclick=()=>{selected=key;render();if(matchMedia('(max-width:1100px)').matches)$('dayTitle').scrollIntoView({behavior:'smooth',block:'start'})};$('calendar').append(button);
  }
  const daily=matchesForDate(selected,matches);$('matches').innerHTML='';
  if(!daily.length){const empty=document.createElement('div');empty.className='empty';empty.textContent=!loaded?'Loading reservations…':loadError?'Reservations are temporarily unavailable.':'No matches posted yet. Have a reservation? Start the group.';$('matches').append(empty);if(loaded&&!loadError){const button=document.createElement('button');button.textContent='+ Post for this day';button.onclick=()=>openEditor();button.disabled=busy;$('matches').append(button);}}
@@ -74,7 +77,7 @@ function render(){
   card.innerHTML=`<h4>${esc(timeLabel(m.start))} – ${esc(timeLabel(m.end))}</h4><div class="muted small">${esc(m.court)}</div><span class="badge ${available<=0||past?'full':''}">${past?(practice?'Ended':'Started / past'):practice?'Unlimited signups':available>0?`${available} spot${available===1?'':'s'} open`:'Full'}</span><div class="small"><strong>${practice?`${m.players.length} going`:`${m.players.length+1} / ${m.capacity+1} players`}</strong></div><ul class="players">${practice?'':`<li>${playerHtml(m.host)} <strong>· Host</strong></li>`}${m.players.map(player=>`<li>${playerHtml(player)}</li>`).join('')}</ul>${m.notes?`<p class="muted small" style="white-space:pre-wrap">${esc(m.notes)}</p>`:''}`;
   if(own){card.querySelectorAll('.players li').forEach((item,index)=>{if(index===0)return;const player=m.players[index-1],button=document.createElement('button');button.className='remove-player danger';button.textContent='Remove';button.setAttribute('aria-label','Remove '+playerName(player));button.disabled=busy||!!loadError||!loaded;button.onclick=async()=>{if(confirm('Remove '+playerName(player)+' from this match?'))if(await mutate('remove',{id:m.id,target:player}))toast(playerName(player)+' removed from the match.');};item.append(button);});}
   const actions=document.createElement('div');actions.className='actions';const add=(label,fn,style='',disabled=false)=>{const button=document.createElement('button');button.textContent=label;button.className=style;button.disabled=disabled||busy||!!loadError||!loaded;button.onclick=fn;actions.append(button)};
-  if(own){add('Edit',()=>openEditor(m),'',past);add('Cancel match',async()=>{if(confirm('Cancel this reservation for everyone?'))await mutate('cancel',{id:m.id})},'danger');}
+  if(own){add('Edit',()=>openEditor(m),'',past);add('Cancel match',async()=>{if(confirm('Cancel this reservation for everyone?')&&await mutate('cancel',{id:m.id}))toast('Reservation canceled.')},'danger');}
   else if(joined)add(practice?'Leave practice':'Leave match',()=>signup(m,false),'',past);
   else if(practice&&isGuest(user))add('Members only',()=>{},'',true);
   else add(past?'Closed':available>0?(practice?'Join practice':'Join match'):'Full',()=>signup(m,true),'primary',available<=0||past);
@@ -96,13 +99,13 @@ function applyLocal(rows,action,payload,id){
  if(action==='leave')match.players=match.players.filter(name=>name!==user);match.version=(match.version||1)+1;
 }
 async function mutate(action,payload,applied){
- if(busy||!loaded||loadError||!requireUser())return false;setBusy(true);let before=null,failed=false;
+ if(loadError&&!busy){toast(loadError);$('matchError').textContent=loadError;loadReservations(true);}if(busy||!loaded||loadError||!requireUser())return false;setBusy(true);let before=null,failed=false;
  try{
   const signature=JSON.stringify({action,player:user,...payload});let pending;try{pending=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
-  const requestId=pending?.signature===signature?pending.requestId:newId();try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
-  if(configured){const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();const send=async()=>fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await ensurePlayerSession(user)},body:JSON.stringify({action,player:user,requestId,...payload})});let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const data=await response.json();if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
+  const requestId=pending?.signature===signature&&['create','edit'].includes(action)?pending.requestId:newId();try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
+  if(configured){const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();toast('Saving…');const send=async()=>fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await ensurePlayerSession(user)},body:JSON.stringify({action,player:user,requestId,...payload})});let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const data=await response.json().catch(()=>({}));if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;saveCount++;}
   try{sessionStorage.removeItem(PENDING_KEY)}catch{}render();return true;
- }catch(error){if(before)matches=before;failed=true;toast(error.message||'Could not confirm the update. Refresh before retrying.');return false;}
+ }catch(error){if(before)matches=before;failed=true;const message=problem(error,'Could not confirm the update. Refresh before retrying.');toast(message);$('matchError').textContent=message;return false;}
  finally{setBusy(false);render();if(failed)loadReservations(true);}
 }
 async function signup(match,joining){if(await mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
@@ -110,9 +113,9 @@ function openEditor(match=null){
  if(!loaded||loadError||!requireUser())return;editing=match?.id??null;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'18:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.max(0,ROSTER.length-1);$('notes').value=match?.notes??'';$('editor').showModal();
 }
 $('post').onclick=()=>openEditor();$('closeEditor').onclick=()=>{if(!busy)$('editor').close()};$('editor').addEventListener('cancel',event=>{if(busy)event.preventDefault()});
-$('matchForm').onsubmit=async event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};if(!await mutate(editing?'edit':'create',{...(editing?{id:editing,expectedVersion:editingVersion}:{}),reservation},show)){if(!$('editor').open&&!busy)$('editor').showModal();return;}{show();render();toast('Reservation saved to Google Sheets.');}};
+$('matchForm').onsubmit=async event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};if(!await mutate(editing?'edit':'create',{...(editing?{id:editing,expectedVersion:editingVersion}:{}),reservation},show)){if(!$('editor').open&&!busy)$('editor').showModal();return;}{render();toast('Reservation saved to Google Sheets.');}};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>loadReservations();
-window.addEventListener('focus',()=>{if(configured)loadReservations(true)});
-setInterval(()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}if(configured&&document.visibilityState==='visible')loadReservations(true);},30000);
+window.addEventListener('focus',()=>{if(configured||!loaded)loadReservations(true)});
+setInterval(()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true);},30000);
 render();void loadReservations();if(!user)openLogin();
