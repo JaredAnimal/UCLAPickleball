@@ -1,0 +1,2 @@
+overrides:
+  miniflare>sharp: 0.35.4

@@ -1,0 +1,43 @@
+import * as calendar from './routes/calendar';
+import * as reservations from './routes/reservations';
+import * as playerSession from './routes/player-session';
+import * as sheetsConnection from './routes/sheets-connection';
+import * as connectSheet from './routes/connect-sheet';
+import * as bot from './routes/bot';
+import * as admin from './routes/admin';
+
+type Handler = (request: Request) => Response | Promise<Response>;
+const routes: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = {
+  '/': calendar,
+  '/api/reservations': reservations,
+  '/api/player-session': playerSession,
+  '/api/sheets-connection': sheetsConnection,
+  '/connect-sheet': connectSheet,
+  '/bot': bot,
+  '/admin': admin,
+};
+
+export default {
+  async fetch(request: Request, env: Cloudflare.Env): Promise<Response> {
+    let response: Response;
+    try {
+      const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
+      const route = routes[path];
+      if (route) {
+        const method = request.method === 'HEAD' ? 'GET' : request.method;
+        const handler = route[method as 'GET' | 'POST'];
+        response = handler ? await handler(request) : new Response('Method not allowed', {status:405, headers:{Allow:Object.keys(route).join(', ')}});
+      } else {
+        response = await env.ASSETS.fetch(request);
+      }
+    } catch (error) {
+      console.error('Request failed', error instanceof Error ? error.name : 'Unknown');
+      response = new Response('The calendar is temporarily unavailable. Please retry.', {status:503, headers:{'Cache-Control':'no-store'}});
+    }
+    const headers = new Headers(response.headers);
+    headers.set('X-Content-Type-Options', 'nosniff');
+    headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+    headers.set('X-Frame-Options', 'SAMEORIGIN');
+    return new Response(request.method === 'HEAD' ? null : response.body, {status:response.status, statusText:response.statusText, headers});
+  },
+} satisfies ExportedHandler<Cloudflare.Env>;

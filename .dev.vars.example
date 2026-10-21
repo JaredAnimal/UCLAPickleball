@@ -1,0 +1,8 @@
+# Copy to .dev.vars for local development, or run pnpm setup:local.
+# Configure production values in Cloudflare Worker > Settings > Variables and Secrets.
+# Never commit .dev.vars or real secret values.
+ADMIN_PASSWORD=
+BOT_DOWNLOAD_PASSWORD=
+BOT_SESSION_SECRET=
+SHEETS_ENCRYPTION_KEY=
+SHEETS_SPREADSHEET_ID=

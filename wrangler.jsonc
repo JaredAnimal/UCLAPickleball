@@ -1,0 +1,33 @@
+// Replace database_id with the ID of your own D1 database before deploying.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ucla-club-pickleball",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ucla-club-pickleball",
+      "database_id": "00000000-0000-4000-8000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "rules": [
+    {
+      "type": "Text",
+      "globs": [
+        "**/*.gs"
+      ],
+      "fallthrough": true
+    }
+  ]
+}

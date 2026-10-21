@@ -18,7 +18,7 @@ The calendar deliberately uses the club's honor system for player names. Selecti
 
 This is the complete standalone application, not a static HTML export. GitHub stores the source. Cloudflare Workers runs the server and serves the assets. The existing Google Sheet continues to hold reservations and the roster.
 
-The migration removes Sites-specific hosting and identity dependencies. Owner settings now use `/admin` with a separate `ADMIN_PASSWORD`. No existing production passwords, shared secrets, private database records, or Git history are included. Old internship tracker code and data are not included.
+The migration removes Sites-specific hosting and identity dependencies. Owner settings now use `/admin` with a separate `ADMIN_PASSWORD`. No production passwords, shared secrets, club roster names, actual Sheet identifiers, private database records, or Git history are included. Old internship tracker code and data are not included.
 
 Keep the current site available until the replacement has been configured and tested. Uploading this repository alone does not move the live website or its URL.
 
@@ -35,7 +35,7 @@ pnpm dev
 
 Open the local URL Wrangler prints. `setup:local` creates ignored `.dev.vars` with random development values and never overwrites an existing file. Open that file locally to read your development passwords. Do not upload it.
 
-With no Sheet connection, the calendar retains its existing browser-local fallback; those matches are not shared with other people. Keep development disconnected from the real Sheet unless you intend to change real reservations. Automated tests mock Google and use a disposable database.
+Until the Sheet is connected, the calendar is read-only and member names are not available. Use a separate test spreadsheet for interactive development. Automated checks provide synthetic player names, mock Google, and use a disposable database, so they need no live connection.
 
 Run all checks:
 
@@ -75,6 +75,7 @@ This type-checks the Worker, tests the Apps Script reservation rules and calenda
 | `BOT_DOWNLOAD_PASSWORD` | The bot download-page password you want to retain |
 | `BOT_SESSION_SECRET` | A random 32-byte signing secret, for example 64 hexadecimal characters |
 | `SHEETS_ENCRYPTION_KEY` | Exactly 32 random bytes encoded as base64 |
+| `SHEETS_SPREADSHEET_ID` | The existing private spreadsheet ID, copied from its Google Sheets URL between `/d/` and `/edit` |
 
 Generate the two keys locally with Node.js. These commands print new random values on your own computer; save them directly into Cloudflare's secret fields:
 
@@ -90,9 +91,9 @@ Keep the encryption key stable after connecting the Sheet. Replacing it requires
 1. Visit the new website's `/admin` page and enter the new owner password.
 2. At `/connect-sheet`, paste the **existing** Apps Script web-app URL ending in `/exec` and its connection secret. The secret is in the Apps Script project's **Project Settings → Script Properties → API_SECRET**.
 3. Select **Verify & connect**. The server checks the API version, expected spreadsheet ID, and roster before encrypting and saving the connection.
-4. Reuse the existing Google deployment. Do not replace its code, run `setup`, or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a maintained source copy and for new connection setup.
+4. Reuse the existing Google deployment. Do not replace its code, run `setup`, or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a portable source copy for future changes or new setup. Its private spreadsheet ID comes from the bound spreadsheet, or an owner-set `SPREADSHEET_ID` Script Property; it is not embedded in source.
 
-The expected Sheet is configured in `src/lib/pickleball-config.ts`. The sheet stays private. The web app executes as its Google owner and checks the shared secret on every data request. Neither the shared secret nor the runtime keys are returned to calendar visitors.
+The expected Sheet ID is configured privately with `SHEETS_SPREADSHEET_ID`. Roster names come from the connected Sheet at runtime; none are embedded in this repository. The sheet stays private. The web app executes as its Google owner and checks the shared secret on every data request. Neither the shared secret nor the runtime keys are returned to calendar visitors.
 
 ## Automatic deployment from GitHub
 
@@ -136,6 +137,6 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 | `src/routes/` | Reservation, session, owner setup, and bot handlers |
 | `src/lib/sheet-connection.ts` | Verified Google bridge and encrypted configuration |
 | `src/lib/admin-access.ts` | Owner password sessions and login throttling |
-| `src/lib/pickleball-config.ts` | Fallback roster and expected Sheet |
+| `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
 | `migrations/` | D1 schema for settings and owner login throttling |

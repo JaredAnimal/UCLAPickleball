@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UCLA Club Pickleball</title>
+<link rel="stylesheet" href="/pickleball-calendar.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img class="logo" src="/pickleball.svg" alt="Pickleball" width="46" height="46">
+    <div><h1>UCLA Club Pickleball</h1><p>Find a court.</p></div>
+  </div>
+  <div class="account">
+    <a class="nav-button bot-nav" href="/bot">Automation bot <span class="beta-label">[BETA]</span></a>
+    <span id="identity"></span>
+    <button id="switchUser">Switch player</button>
+  </div>
+</header>
+<main>
+  <div class="topline">
+    <div><h2>This week on court</h2><span class="muted">Today and the next five days</span></div>
+    <button class="gold" id="post">+ Post reservation</button>
+  </div>
+  <div class="notice error" id="syncNotice" aria-live="polite" hidden></div>
+  <div class="layout">
+    <section class="panel" aria-label="Six-day match calendar">
+      <div class="toolbar">
+        <h3 id="monthTitle"></h3>
+        <div class="nav">
+          <button id="prev" aria-label="Previous six days">Previous</button>
+          <button id="today">Today</button><button id="refresh">Refresh</button>
+          <button id="next" aria-label="Next six days">Next</button>
+        </div>
+      </div>
+      <div class="calendar" id="calendar"></div>
+      <div class="legend">
+        <span>🔵 Open spots</span><span>🟡 You’re playing</span><span>⚪ Full</span>
+      </div>
+    </section>
+    <aside class="panel side">
+      <h3 id="dayTitle"></h3>
+      <div class="muted small">Reservations</div>
+      <div id="matches"></div>
+    </aside>
+  </div>
+</main>
+
+<dialog id="login">
+  <h2 id="loginTitle">Hey, Bruin.</h2>
+  <p class="muted" id="loginIntro">Enter your name as it appears on the club roster to join the calendar.</p>
+  <form id="loginForm">
+    <div class="row">
+      <label>First name<input id="first" maxlength="50" autocomplete="given-name" required></label>
+      <label>Last name<input id="last" maxlength="50" autocomplete="family-name" required></label>
+    </div>
+    <div class="error" id="loginError" role="alert"></div>
+    <div class="modalactions">
+      <button type="button" id="loginCancel">Cancel</button>
+      <button class="primary" id="loginSubmit">Enter calendar</button>
+    </div>
+  </form>
+  <button type="button" id="guestMode" class="guest-toggle">Continue as guest</button>
+  <p class="muted small">Honor system: use your own name. No password required.</p>
+</dialog>
+
+<dialog id="editor">
+  <h2 id="editorTitle">Post a reservation</h2>
+  <p class="muted small">Already booked a court? Share it with the club here.</p>
+  <form id="matchForm">
+    <label>Date<input type="date" id="date" required></label>
+    <div class="row">
+      <label>Start time<input type="time" id="start" required value="18:00"></label>
+      <label>End time<input type="time" id="end" required value="20:00"></label>
+    </div>
+    <label>Court / location
+      <input id="court" value="Sunset Rec" placeholder="e.g. Sunset Rec · Court 2" maxlength="100" required>
+    </label>
+    <label>Additional players allowed
+      <input type="number" id="capacity" min="0" max="42" value="3" required>
+    </label>
+    <p class="muted small">You’re already included as host. Choose 3 for a group of 4.</p>
+    <label>Notes (optional)
+      <textarea id="notes" rows="3" maxlength="500" placeholder="Anything players should know?"></textarea>
+    </label>
+    <div class="error" id="matchError" role="alert"></div>
+    <div class="modalactions">
+      <button type="button" id="closeEditor">Cancel</button>
+      <button class="primary">Save reservation</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast" role="status" hidden></div>
+
+<script id="calendarConfig" type="application/json">__CALENDAR_CONFIG__</script>
+<script src="/pickleball-calendar.js" defer></script>
+</body>
+</html>
