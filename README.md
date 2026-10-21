@@ -54,7 +54,7 @@ This type-checks the Worker, tests the Apps Script reservation rules and calenda
    pnpm exec wrangler d1 create ucla-club-pickleball
    ```
 
-3. Replace the placeholder `database_id` in `wrangler.jsonc` with the returned database ID. Keep the binding named `DB`. Commit this configuration change to GitHub. The ID is a configuration identifier, not a secret.
+3. `wrangler.jsonc` already holds the club database's `database_id`. On a different Cloudflare account, replace it with the returned ID, keep the binding named `DB`, and commit the change. The ID is a configuration identifier, not a secret.
 4. Apply the schema:
 
    ```sh
@@ -91,9 +91,26 @@ Keep the encryption key stable after connecting the Sheet. Replacing it requires
 1. Visit the new website's `/admin` page and enter the new owner password.
 2. At `/connect-sheet`, paste the **existing** Apps Script web-app URL ending in `/exec` and its connection secret. The secret is in the Apps Script project's **Project Settings → Script Properties → API_SECRET**.
 3. Select **Verify & connect**. The server checks the API version, expected spreadsheet ID, and roster before encrypting and saving the connection.
-4. Reuse the existing Google deployment. Do not replace its code, run `setup`, or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a portable source copy for future changes or new setup. Its private spreadsheet ID comes from the bound spreadsheet, or an owner-set `SPREADSHEET_ID` Script Property; it is not embedded in source.
+4. Reuse the existing Google deployment. Do not replace its code, run `setup`, or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a portable source copy for future changes or new setup. Its private spreadsheet ID comes from an owner-set `SPREADSHEET_ID` Script Property when present, otherwise from the spreadsheet the script is bound to; it is not embedded in source.
 
 The expected Sheet ID is configured privately with `SHEETS_SPREADSHEET_ID`. Roster names come from the connected Sheet at runtime; none are embedded in this repository. The sheet stays private. The web app executes as its Google owner and checks the shared secret on every data request. Neither the shared secret nor the runtime keys are returned to calendar visitors.
+
+## Update the Google script
+
+Merging to `main` updates the website only. Changes to `src/lib/pickleball-apps-script.gs` reach Google only when the Sheet owner deploys them:
+
+1. In the Sheet, open **Extensions → Apps Script**.
+2. Replace the code in `Code.gs` with the file's contents and save.
+3. Open **Deploy → Manage deployments**, select the active deployment, click the pencil, set **Version** to **New version**, and select **Deploy**.
+
+The web-app URL and secret stay the same, so the website needs no change. Do not run `setup` for an update.
+
+## Set up a new Sheet (testing or a fresh start)
+
+1. Create a Google Sheet with two tabs: `Reservations` (empty) and `Roster` (a header in A1, then one player name per row in column A).
+2. Open **Extensions → Apps Script**, paste `src/lib/pickleball-apps-script.gs`, save, and run `setup` once. It writes the header row, sets the Pacific time zone, and shows the connection secret in the Sheet.
+3. Select **Deploy → New deployment → Web app**, execute as yourself, with access for **Anyone**. Copy the URL ending in `/exec`.
+4. Set `SHEETS_SPREADSHEET_ID` to the new Sheet's ID, then connect it at `/connect-sheet` as above.
 
 ## Automatic deployment from GitHub
 
