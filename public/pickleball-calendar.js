@@ -34,9 +34,9 @@ function showNotice(){
 }
 async function loadReservations(silent=false){
  if(loading||busy)return;loading=true;$('refresh').disabled=true;
- try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;matches=configured?data.matches:[];loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}$('capacity').max=Math.max(0,ROSTER.length-1);render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
+ try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy)matches=configured?data.matches:[];loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}$('capacity').max=Math.max(0,ROSTER.length-1);render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
  catch(error){loadError=error.message||'Could not load reservations.';showNotice();render();if(!silent)toast(loadError);}
- finally{loading=false;setBusy(false);}
+ finally{loading=false;setBusy(busy);}
 }
 function requireUser(){if(user)return true;openLogin();return false;}
 async function ensurePlayerSession(name){
@@ -97,15 +97,15 @@ function applyLocal(rows,action,payload,id){
  if(action==='remove'){if(typeof payload.target!=='string'||payload.target===match.host)throw Error('Choose an attendee to remove.');match.players=match.players.filter(name=>name!==payload.target);}
  if(action==='leave')match.players=match.players.filter(name=>name!==user);match.version=(match.version||1)+1;
 }
-async function mutate(action,payload){
- if(busy||!loaded||loadError||!requireUser())return false;setBusy(true);
+async function mutate(action,payload,applied){
+ if(busy||!loaded||loadError||!requireUser())return false;setBusy(true);let before=null;
  try{
   const signature=JSON.stringify({action,player:user,...payload});let pending;try{pending=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
   const requestId=pending?.signature===signature?pending.requestId:newId();try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
-  if(configured){const token=await ensurePlayerSession(user);const response=await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:user,requestId,...payload})});const data=await response.json();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}}if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
+  if(configured){const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();const token=await ensurePlayerSession(user);const response=await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:user,requestId,...payload})});const data=await response.json();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}}if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
   else{const operation=()=>{const rows=readLocal();applyLocal(rows,action,payload,requestId);localStorage.setItem(KEY,JSON.stringify(rows));matches=rows;};if(navigator.locks)await navigator.locks.request(KEY,operation);else operation();}
   try{sessionStorage.removeItem(PENDING_KEY)}catch{}render();return true;
- }catch(error){toast(error.message||'Could not confirm the update. Refresh before retrying.');return false;}
+ }catch(error){if(before)matches=before;toast(error.message||'Could not confirm the update. Refresh before retrying.');return false;}
  finally{setBusy(false);render();}
 }
 async function signup(match,joining){if(await mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
@@ -113,7 +113,7 @@ function openEditor(match=null){
  if(!loaded||loadError||!requireUser())return;editing=match?.id??null;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'18:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.max(0,ROSTER.length-1);$('notes').value=match?.notes??'';$('editor').showModal();
 }
 $('post').onclick=()=>openEditor();$('closeEditor').onclick=()=>{if(!busy)$('editor').close()};$('editor').addEventListener('cancel',event=>{if(busy)event.preventDefault()});
-$('matchForm').onsubmit=async event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}if(await mutate(editing?'edit':'create',{...(editing?{id:editing,expectedVersion:editingVersion}:{}),reservation})){selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();render();toast(configured?'Reservation saved to Google Sheets.':'Reservation saved in this browser.');}};
+$('matchForm').onsubmit=async event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};if(!await mutate(editing?'edit':'create',{...(editing?{id:editing,expectedVersion:editingVersion}:{}),reservation},show)){if(!$('editor').open&&!busy)$('editor').showModal();return;}{show();render();toast(configured?'Reservation saved to Google Sheets.':'Reservation saved in this browser.');}};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>loadReservations();
 window.addEventListener('storage',event=>{if(event.key===KEY&&loaded&&!configured){try{matches=readLocal();render()}catch(error){toast(error.message)}}});
