@@ -24,7 +24,8 @@ try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 const problem=(error,fallback)=>error instanceof TypeError?'Network problem. Check your connection and try again.':error?.message||fallback;
 function toast(message,ms=5000){$('toast').textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').textContent='',ms);}
-function setBusy(value){busy=value;$('post').disabled=value||!loaded||!!loadError;$('refresh').disabled=value||loading;const submit=$('matchForm').querySelector('button.primary');submit.disabled=value;submit.textContent=value?'Saving…':'Save reservation';}
+const posts=document.querySelectorAll('.post');
+function setBusy(value){busy=value;posts.forEach(b=>b.disabled=value||!loaded||!!loadError);$('refresh').disabled=value||loading;const submit=$('matchForm').querySelector('button.primary');submit.disabled=value;submit.textContent=value?'Saving…':'Save reservation';}
 function showNotice(){
  const notice=$('syncNotice'),text=loadError&&loadError+(loaded?' Displaying the last loaded reservations. Saving is paused.':' Reservations could not be loaded.');if(notice.dataset.text===text)return;notice.dataset.text=text;notice.hidden=!text;notice.textContent=text;
  if(text){const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>loadReservations();notice.append(retry);}
@@ -48,7 +49,7 @@ function setLoginMode(mode){loginMode=mode;$('loginTitle').textContent=mode==='g
 function openLogin(){if(loginPending)return;setLoginMode('member');$('loginCancel').hidden=!user;$('loginForm').reset();if(!$('login').open)$('login').showModal();}
 $('login').addEventListener('cancel',event=>{if(!user||loginPending)event.preventDefault()});
 $('loginCancel').onclick=()=>{if(user)$('login').close()};
-$('switchUser').onclick=openLogin;
+$('switchUser').onclick=()=>{$('profileMenu').hidePopover?.();openLogin()};
 $('guestMode').onclick=()=>{setLoginMode(loginMode==='guest'?'member':'guest');$('first').focus();};
 $('loginForm').onsubmit=async event=>{event.preventDefault();if(loginPending)return;if(!loaded||!configured||loadError){$('loginError').textContent=loadError||'Loading the club roster. Please wait and try again.';loadReservations(true);return;}const first=$('first').value.trim().replace(/\s+/g,' '),last=$('last').value.trim().replace(/\s+/g,' ');let name;
  if(loginMode==='guest'){name=first+' '+last+guestSuffix;if(!first||!last||first.length>50||last.length>50||!isGuest(name)){$('loginError').textContent='Enter a first and last name without brackets or control characters.';return;}}
@@ -62,7 +63,7 @@ function displayRange(){const last=addDays(windowStart,5);const sameMonth=window
 // Spots drawn as dots: host plus joined players filled, the viewer's own spot gold. Text only past `max`.
 const spots=(m,max)=>{const total=m.capacity+1,taken=m.players.length+1,me=m.host===user||m.players.includes(user);return isPractice(m)||total>max?'':`<span class="spots" aria-hidden="true">${Array.from({length:total},(_,i)=>`<i class="${i<taken?(me&&!i?'me':'on'):''}"></i>`).join('')}</span>`};
 function render(){
- $('identity').innerHTML=user?playerHtml(user):'Choose your player';$('monthTitle').textContent=displayRange();$('dayTitle').textContent=dayLabel(selected,{weekday:'long',month:'short',day:'numeric'});$('post').disabled=busy||!loaded||!!loadError;showNotice();
+ $('identity').innerHTML=user?playerHtml(user):'Choose your player';$('initials').textContent=user?playerName(user).trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase():'';$('profile').setAttribute('aria-label',user?'Profile: '+playerName(user):'Profile');$('monthTitle').textContent=displayRange();$('dayTitle').textContent=dayLabel(selected,{weekday:'long',month:'short',day:'numeric'});posts.forEach(b=>b.disabled=busy||!loaded||!!loadError);showNotice();
  $('calendar').innerHTML='';
  for(let i=0;i<6;i++){
   const key=addDays(windowStart,i),today=key===localToday(),dayMatches=matchesForDate(key,matches);
@@ -110,9 +111,9 @@ async function mutate(action,payload,applied){
 }
 async function signup(match,joining){if(await mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
 function openEditor(match=null){
- if(!loaded||loadError||!requireUser())return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'18:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.max(0,ROSTER.length-1);$('notes').value=match?.notes??'';$('editor').showModal();
+ if(!loaded||loadError||!requireUser())return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.max(0,ROSTER.length-1);$('notes').value=match?.notes??'';$('editor').showModal();
 }
-$('post').onclick=()=>openEditor();$('closeEditor').onclick=()=>{if(!busy)$('editor').close()};$('editor').addEventListener('cancel',event=>{if(busy)event.preventDefault()});
+posts.forEach(b=>b.onclick=()=>openEditor());$('closeEditor').onclick=()=>{if(!busy)$('editor').close()};$('editor').addEventListener('cancel',event=>{if(busy)event.preventDefault()});
 $('matchForm').onsubmit=async event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};if(!await mutate(editing?'edit':'create',{...(editing?{id:editing.id,expectedVersion:editingVersion}:{}),reservation},show)){if(!$('editor').open)$('editor').showModal();return;}toast('Reservation saved to Google Sheets.');};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>loadReservations();
