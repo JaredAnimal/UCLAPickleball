@@ -118,7 +118,7 @@ After the first successful deployment, connect this repository under the Cloudfl
 
 | Setting | Value |
 | --- | --- |
-| Worker name | `ucla-club-pickleball` (must match `wrangler.jsonc`) |
+| Worker name | `uclapickleball` (must match `wrangler.jsonc`; PR preview builds fail if it differs) |
 | Root directory | Repository root |
 | Production branch | `main` |
 | Build command | `pnpm check` |
