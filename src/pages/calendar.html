@@ -13,16 +13,19 @@
     <img class="logo" src="/pickleball.svg" alt="Pickleball" width="46" height="46">
     <div><h1>UCLA Club Pickleball</h1><p>Find a court.</p></div>
   </div>
-  <div class="account">
-    <a class="nav-button bot-nav" href="/bot">Automation bot <span class="beta-label">[BETA]</span></a>
-    <span id="identity"></span>
+  <a class="nav-button bot-nav" href="/bot">Automation bot <span class="beta-label">[BETA]</span></a>
+  <button id="profile" class="avatar" popovertarget="profileMenu" aria-label="Profile"><span id="initials"></span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></button>
+  <div id="profileMenu" class="menu" popover>
+    <p class="muted small">Playing as</p>
+    <p id="identity"></p>
     <button id="switchUser">Switch player</button>
   </div>
+  <button class="primary post" id="postTop">+ Post reservation</button>
 </header>
 <main>
   <div class="topline">
     <div><h2>This week on court</h2><span class="muted">Today and the next five days</span></div>
-    <button class="primary" id="post">+ Post reservation</button>
+    <button class="primary post" id="post">+ Post reservation</button>
   </div>
   <div class="notice error" id="syncNotice" aria-live="polite" hidden></div>
   <div class="layout">
@@ -71,8 +74,8 @@
   <p class="muted small">Already booked a court? Share it with the club here.</p>
   <form id="matchForm">
     <label>Date<input type="date" id="date" required></label>
-    <div class="row">
-      <label>Start time<input type="time" id="start" required value="18:00"></label>
+    <div class="row times">
+      <label>Start time<input type="time" id="start" required value="19:00"></label>
       <label>End time<input type="time" id="end" required value="20:00"></label>
     </div>
     <label>Court / location
