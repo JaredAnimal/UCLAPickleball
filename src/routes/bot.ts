@@ -8,14 +8,13 @@ function page(unlocked=false,error='',status=200){
  <div class="bot-footer"><a href="/">← Back to calendar</a><form method="post" action="/bot"><input type="hidden" name="action" value="lock"><button>Lock page</button></form></div>`:
  `<h2>Automation bot <span class="beta-label">[BETA]</span></h2><p class="muted">Enter the password to open the download page.</p>
  <form class="bot-form" method="post" action="/bot"><label for="password">Password</label><input id="password" name="password" type="password" required maxlength="200" autocomplete="off"><p class="error" role="alert">${error}</p><button class="primary">Unlock page</button></form><div class="bot-footer"><a href="/">← Back to calendar</a></div>`;
- return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Automation Bot · UCLA Club Pickleball</title><link rel="stylesheet" href="/pickleball-calendar.css"></head><body><header><div class="brand"><img class="logo" src="/pickleball.svg" alt="Pickleball" width="46" height="46"><div><h1>UCLA Club Pickleball</h1><p>Find a court.</p></div></div></header><main class="bot-page"><section class="panel bot-panel">${content}</section></main></body></html>`,{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store','X-Frame-Options':'SAMEORIGIN'}});
+ return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Automation Bot · UCLA Club Pickleball</title><link rel="stylesheet" href="/pickleball-calendar.css"></head><body><header><div class="brand"><img class="logo" src="/pickleball.svg" alt="Pickleball" width="46" height="46"><div><h1>UCLA Club Pickleball</h1><p>Find a court.</p></div></div></header><main class="bot-page"><section class="panel bot-panel">${content}</section></main></body></html>`,{status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store'}});
 }
+const scope='public-bot';
 export async function GET(request:Request){
- const scope='public-bot';
  try{return page(await hasBotAccess(request,scope));}catch{return page(false,'Bot access is temporarily unavailable.',503);}
 }
 export async function POST(request:Request){
- const scope='public-bot';
  if(!sameOrigin(request))return page(false,'This request is not allowed.',403);
  try{
   const body=await request.text();if(body.length>1000)return page(false,'Request is too large.',400);

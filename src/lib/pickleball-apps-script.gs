@@ -28,34 +28,33 @@ function doPost(event){
  let lock;
  try{
   const raw=event&&event.postData&&event.postData.contents;if(!raw||raw.length>15000)throw new Error('Invalid request.');
-  const p=JSON.parse(raw),secret=PropertiesService.getScriptProperties().getProperty('API_SECRET');
+  const p=JSON.parse(raw),props=PropertiesService.getScriptProperties(),secret=props.getProperty('API_SECRET');
   if(!secret||!equal_(String(p.secret||''),secret))throw new Error('Connection secret is incorrect.');
-  const ss=SpreadsheetApp.openById(spreadsheetId_()),sheet=ss.getSheetByName('Reservations'),rosterSheet=ss.getSheetByName('Roster');
+  const sheetId=spreadsheetId_(),ss=SpreadsheetApp.openById(sheetId),sheet=ss.getSheetByName('Reservations'),rosterSheet=ss.getSheetByName('Roster');
   if(!sheet||!rosterSheet)throw new Error('Reservations or Roster tab is missing.');
   checkHeaders_(sheet.getRange(1,1,1,COLUMNS.length).getDisplayValues()[0]);
-  const roster=rosterSheet.getLastRow()>1?rosterSheet.getRange(2,1,rosterSheet.getLastRow()-1,1).getDisplayValues().map(r=>r[0].trim()).filter(Boolean):[];
-  if(p.action==='list')return reply_({ok:true,sheetId:spreadsheetId_(),matches:read_(sheet),roster:roster});
-  lock=LockService.getScriptLock();if(!lock.tryLock(20000))throw new Error('Another player is updating the calendar. Try again.');
-  let matches=read_(sheet);
+  const rosterRows=rosterSheet.getLastRow()-1,roster=rosterRows>0?rosterSheet.getRange(2,1,rosterRows,1).getDisplayValues().map(r=>r[0].trim()).filter(Boolean):[];
+  if(p.action==='list')return reply_({ok:true,sheetId:sheetId,matches:read_(sheet),roster:roster});
+  lock=LockService.getScriptLock();if(!lock.tryLock(10000))throw new Error('Another player is updating the calendar. Try again.');
+  let matches=read_(sheet);const done=()=>reply_({ok:true,sheetId:sheetId,matches:matches,roster:roster});
   if(!roster.includes(p.player)&&!guest_(p.player))throw new Error('Choose a club player or enter a guest name.');
   if(!['create','edit','join','leave','cancel','remove'].includes(p.action)||typeof p.requestId!=='string'||!/^[a-zA-Z0-9_-]{16,100}$/.test(p.requestId))throw new Error('Invalid action.');
   if(p.action==='join'&&practice_(p.id)&&guest_(p.player))throw new Error('Club practice is NOT open to guests.');
   if(p.action==='create'&&p.requestId.indexOf('practice-')===0)throw new Error('Practice IDs are reserved.');
-  const props=PropertiesService.getScriptProperties();
   const fingerprint=Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify({action:p.action,player:p.player,id:p.id,expectedVersion:p.expectedVersion,reservation:p.reservation,target:p.target})));
   const receiptKey='request_'+p.requestId,receipt=props.getProperty(receiptKey);
-  if(receipt){if(JSON.parse(receipt).fingerprint!==fingerprint)throw new Error('The retry contains different data. Refresh and try again.');return reply_({ok:true,sheetId:spreadsheetId_(),matches:matches,roster:roster});}
+  if(receipt){if(JSON.parse(receipt).fingerprint!==fingerprint)throw new Error('The retry contains different data. Refresh and try again.');return done();}
   let index=matches.findIndex(m=>m.id===(p.action==='create'?p.requestId:p.id));
   let match=index>=0?matches[index]:null;
   const now=Utilities.formatDate(new Date(),TIME_ZONE,"yyyy-MM-dd'T'HH:mm");
   if(p.action==='join'&&!match){const practice=practice_(p.id);if(practice){if(practice.date+'T'+practice.end<=now)throw new Error('This practice has ended.');match=practice;match._row=sheet.getLastRow()+1;matches.push(match);index=matches.length-1;}}
   if(match&&match.kind==='practice'&&['edit','cancel','remove'].includes(p.action))throw new Error('Weekly club practices cannot be edited or canceled.');
   if(p.action==='create'){
-   if(match){if(match.host!==p.player)throw new Error('Reservation ID already exists.');return reply_({ok:true,sheetId:spreadsheetId_(),matches:matches,roster:roster});}
+   if(match){if(match.host!==p.player)throw new Error('Reservation ID already exists.');return done();}
    const data=validate_(p.reservation,now,roster.length);
    match=Object.assign({id:p.requestId,host:p.player,players:[],version:1},data);write_(sheet,sheet.getLastRow()+1,match);matches.push(match);
   }else{
-   if(!match){if(p.action==='cancel')return reply_({ok:true,sheetId:spreadsheetId_(),matches:matches,roster:roster});throw new Error('This reservation no longer exists. Refresh the calendar.');}
+   if(!match){if(p.action==='cancel')return done();throw new Error('This reservation no longer exists. Refresh the calendar.');}
    if(['edit','cancel','remove'].includes(p.action)&&match.host!==p.player)throw new Error('Only the host can change this match or remove players.');
    if(!['cancel','remove'].includes(p.action)&&match.date+'T'+(match.kind==='practice'?match.end:match.start)<=now)throw new Error('This match has already started.');
    if(p.action==='edit'){
@@ -71,7 +70,7 @@ function doPost(event){
   SpreadsheetApp.flush();
   props.setProperty(receiptKey,JSON.stringify({fingerprint:fingerprint,at:Date.now()}));
   const all=props.getProperties(),receipts=Object.keys(all).filter(k=>k.indexOf('request_')===0);if(receipts.length>200){receipts.sort((a,b)=>JSON.parse(all[a]).at-JSON.parse(all[b]).at).slice(0,receipts.length-200).forEach(k=>props.deleteProperty(k));}
-  return reply_({ok:true,sheetId:spreadsheetId_(),matches:matches,roster:roster});
+  return done();
  }catch(error){return reply_({ok:false,error:error&&error.message?error.message:'The request could not be completed.'});}
  finally{if(lock)lock.releaseLock();}
 }
@@ -98,7 +97,7 @@ function write_(sheet,row,m){
  const day=Date.parse(m.date+'T00:00:00Z')/86400000+25569;
  const time=s=>{const p=s.split(':').map(Number);return (p[0]*60+p[1])/1440;};
  const literal=s=>s===''?s:"'"+s;
- if(row>sheet.getMaxRows())sheet.insertRowsAfter(sheet.getMaxRows(),row-sheet.getMaxRows());
+ const max=sheet.getMaxRows();if(row>max)sheet.insertRowsAfter(max,row-max+100);
  sheet.getRange(row,2).setNumberFormat('yyyy-mm-dd');sheet.getRange(row,3,1,2).setNumberFormat('hh:mm');
  sheet.getRange(row,1,1,COLUMNS.length).setValues([[literal(m.id),day,time(m.start),time(m.end),literal(m.court),m.kind==='practice'?'Unlimited':m.capacity,literal(m.host),literal(m.players.join('\n')),literal(m.notes),new Date().toISOString(),m.version]]);
  sheet.getRange(row,8,1,2).setWrap(true);
