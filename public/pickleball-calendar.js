@@ -36,7 +36,7 @@ async function loadReservations(silent=false){
  if(loading||busy)return;loading=true;$('refresh').disabled=true;
  try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json();if(!response.ok)throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy)matches=configured?data.matches:[];loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}$('capacity').max=Math.max(0,ROSTER.length-1);render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
  catch(error){loadError=error.message||'Could not load reservations.';showNotice();render();if(!silent)toast(loadError);}
- finally{loading=false;setBusy(false);}
+ finally{loading=false;setBusy(busy);}
 }
 function requireUser(){if(user)return true;openLogin();return false;}
 async function ensurePlayerSession(name){
@@ -102,7 +102,7 @@ async function mutate(action,payload,applied){
  try{
   const signature=JSON.stringify({action,player:user,...payload});let pending;try{pending=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
   const requestId=pending?.signature===signature?pending.requestId:newId();try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
-  if(configured){const draft=structuredClone(matches);applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();const token=await ensurePlayerSession(user);const response=await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:user,requestId,...payload})});const data=await response.json();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}}if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
+  if(configured){const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();const token=await ensurePlayerSession(user);const response=await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:user,requestId,...payload})});const data=await response.json();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}}if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
   else{const operation=()=>{const rows=readLocal();applyLocal(rows,action,payload,requestId);localStorage.setItem(KEY,JSON.stringify(rows));matches=rows;};if(navigator.locks)await navigator.locks.request(KEY,operation);else operation();}
   try{sessionStorage.removeItem(PENDING_KEY)}catch{}render();return true;
  }catch(error){if(before)matches=before;toast(error.message||'Could not confirm the update. Refresh before retrying.');return false;}
