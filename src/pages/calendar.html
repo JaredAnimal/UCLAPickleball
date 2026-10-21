@@ -43,9 +43,15 @@
         <span><span class="spots" aria-hidden="true"><i></i></span>Open spot</span><span><span class="spots" aria-hidden="true"><i class="on"></i></span>Taken</span><span><span class="spots" aria-hidden="true"><i class="me"></i></span>You</span><span class="full"><span class="spots" aria-hidden="true"><i class="on"></i></span>Full</span>
       </div>
     </section>
-    <aside class="side">
-      <h3 id="dayTitle"></h3>
-      <div class="muted small">Reservations</div>
+    <aside class="side" aria-labelledby="listTitle">
+      <div class="sidehead">
+        <h3 id="listTitle">Matches</h3>
+        <div class="filters" role="group" aria-label="Filter matches">
+          <button type="button" class="filter" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" class="filter" data-filter="open" aria-pressed="false">Open spots</button>
+          <button type="button" class="filter" data-filter="mine" aria-pressed="false">My matches</button>
+        </div>
+      </div>
       <div id="matches"></div>
     </aside>
   </div>
@@ -70,7 +76,7 @@
 </dialog>
 
 <dialog id="editor" aria-labelledby="editorTitle">
-  <h2 id="editorTitle">Post a reservation</h2>
+  <h2 id="editorTitle" tabindex="-1" autofocus>Post a reservation</h2>
   <p class="muted small">Already booked a court? Share it with the club here.</p>
   <form id="matchForm">
     <label>Date<input type="date" id="date" required></label>
@@ -81,10 +87,13 @@
     <label>Court / location
       <input id="court" value="Sunset Rec" placeholder="e.g. Sunset Rec · Court 2" maxlength="100" required>
     </label>
-    <label>Additional players allowed
-      <input type="number" id="capacity" min="0" max="42" value="3" required>
-    </label>
-    <p class="muted small">You’re already included as host. Choose 3 for a group of 4.</p>
+    <label for="capacity">Spots for other players</label>
+    <div class="stepper">
+      <button type="button" class="icon" data-step="-1" aria-label="One fewer spot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      <input type="number" id="capacity" min="0" max="42" value="3" inputmode="numeric" required>
+      <button type="button" class="icon" data-step="1" aria-label="One more spot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <span class="muted small" id="capacityHint" aria-live="polite"></span>
+    </div>
     <label>Notes (optional)
       <textarea id="notes" rows="3" maxlength="500" placeholder="Anything players should know?"></textarea>
     </label>
