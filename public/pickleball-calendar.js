@@ -1,6 +1,6 @@
 const CONFIG=JSON.parse(document.getElementById('calendarConfig').textContent);
 let ROSTER=CONFIG.roster;
-const $=id=>document.getElementById(id),KEY='ucla-pickleball-matches-v1',USER_KEY='ucla-pickleball-user-v1',PENDING_KEY='ucla-pickleball-pending-v1',TOKEN_KEY='ucla-pickleball-session-v1';
+const $=id=>document.getElementById(id),USER_KEY='ucla-pickleball-user-v1',PENDING_KEY='ucla-pickleball-pending-v1',TOKEN_KEY='ucla-pickleball-session-v1';
 const norm=s=>s.trim().replace(/\s+/g,' ').toLowerCase();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const guestSuffix=' [guest]';
@@ -25,12 +25,10 @@ try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 if(ROSTER.length&&!ROSTER.includes(user)&&!isGuest(user))user='';
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5000);}
-function readLocal(){const rows=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(rows))throw Error('Saved reservations could not be read.');return rows;}
 function setBusy(value){busy=value;$('post').disabled=value||!loaded||!!loadError;$('refresh').disabled=value||loading;const submit=$('matchForm').querySelector('button.primary');submit.disabled=value;submit.textContent=value?'Saving…':'Save reservation';}
 function showNotice(){
  const notice=$('syncNotice');notice.hidden=true;notice.className='notice error';notice.replaceChildren();
  if(loadError){notice.hidden=false;notice.textContent=loadError+(loaded?' Displaying the last loaded reservations. Saving is paused.':' Reservations could not be loaded.');const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>loadReservations();notice.append(retry);}
- else if(loaded&&!configured){notice.hidden=false;notice.innerHTML='Shared saving is not connected. Reservations stay in this browser. <a href="/connect-sheet">Connect Google Sheet</a>.';}
 }
 async function loadReservations(silent=false){
  if(loading||busy)return;loading=true;$('refresh').disabled=true;
@@ -103,7 +101,6 @@ async function mutate(action,payload,applied){
   const signature=JSON.stringify({action,player:user,...payload});let pending;try{pending=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
   const requestId=pending?.signature===signature?pending.requestId:newId();try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
   if(configured){const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();const token=await ensurePlayerSession(user);const response=await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:user,requestId,...payload})});const data=await response.json();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}}if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;}
-  else{const operation=()=>{const rows=readLocal();applyLocal(rows,action,payload,requestId);localStorage.setItem(KEY,JSON.stringify(rows));matches=rows;};if(navigator.locks)await navigator.locks.request(KEY,operation);else operation();}
   try{sessionStorage.removeItem(PENDING_KEY)}catch{}render();return true;
  }catch(error){if(before)matches=before;toast(error.message||'Could not confirm the update. Refresh before retrying.');return false;}
  finally{setBusy(false);render();}
@@ -113,10 +110,9 @@ function openEditor(match=null){
  if(!loaded||loadError||!requireUser())return;editing=match?.id??null;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'18:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.max(0,ROSTER.length-1);$('notes').value=match?.notes??'';$('editor').showModal();
 }
 $('post').onclick=()=>openEditor();$('closeEditor').onclick=()=>{if(!busy)$('editor').close()};$('editor').addEventListener('cancel',event=>{if(busy)event.preventDefault()});
-$('matchForm').onsubmit=async event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};if(!await mutate(editing?'edit':'create',{...(editing?{id:editing,expectedVersion:editingVersion}:{}),reservation},show)){if(!$('editor').open&&!busy)$('editor').showModal();return;}{show();render();toast(configured?'Reservation saved to Google Sheets.':'Reservation saved in this browser.');}};
+$('matchForm').onsubmit=async event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};if(!await mutate(editing?'edit':'create',{...(editing?{id:editing,expectedVersion:editingVersion}:{}),reservation},show)){if(!$('editor').open&&!busy)$('editor').showModal();return;}{show();render();toast('Reservation saved to Google Sheets.');}};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>loadReservations();
-window.addEventListener('storage',event=>{if(event.key===KEY&&loaded&&!configured){try{matches=readLocal();render()}catch(error){toast(error.message)}}});
 window.addEventListener('focus',()=>{if(configured)loadReservations(true)});
 setInterval(()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}if(configured&&document.visibilityState==='visible')loadReservations(true);},30000);
 render();void loadReservations();if(!user)openLogin();
