@@ -1,4 +1,4 @@
-// Replace database_id with the ID of your own D1 database before deploying.
+// Production settings database; member names and Sheet credentials stay outside this file.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ucla-club-pickleball",
@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "ucla-club-pickleball",
-      "database_id": "00000000-0000-4000-8000-000000000000",
+      "database_id": "d54799f5-2125-4065-8e6f-03b3b0f4334f",
       "migrations_dir": "migrations"
     }
   ],
