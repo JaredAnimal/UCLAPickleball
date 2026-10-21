@@ -46,17 +46,13 @@ export async function attemptKey(request: Request) {
   // Cloudflare supplies this header in production. Store only a digest, with a short expiry.
   return digest(request.headers.get('cf-connecting-ip') || 'local-development');
 }
+// Counts the attempt before the password is checked, so parallel guesses can't all slip under the limit.
 export async function attemptsAllowed(key: string) {
   const now = Math.floor(Date.now() / 1000);
-  const row = await database().prepare('SELECT attempts, expires FROM admin_attempts WHERE key = ?').bind(key).first<{attempts:number; expires:number}>();
-  return !row || row.expires <= now || row.attempts < 5;
-}
-export async function failedAttempt(key: string) {
-  const now = Math.floor(Date.now() / 1000);
-  await database().prepare(`INSERT INTO admin_attempts (key, attempts, expires) VALUES (?, 1, ?)
-    ON CONFLICT(key) DO UPDATE SET attempts = CASE WHEN expires <= ? THEN 1 ELSE attempts + 1 END,
-    expires = CASE WHEN expires <= ? THEN excluded.expires ELSE expires END`).bind(key, now + 900, now, now).run();
   await database().prepare('DELETE FROM admin_attempts WHERE expires <= ?').bind(now).run();
+  const row = await database().prepare(`INSERT INTO admin_attempts (key, attempts, expires) VALUES (?, 1, ?)
+    ON CONFLICT(key) DO UPDATE SET attempts = attempts + 1 RETURNING attempts`).bind(key, now + 900).first<{attempts:number}>();
+  return !!row && row.attempts <= 5;
 }
 export async function clearAttempts(key: string) {
   await database().prepare('DELETE FROM admin_attempts WHERE key = ?').bind(key).run();

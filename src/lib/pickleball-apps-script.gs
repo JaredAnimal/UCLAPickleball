@@ -30,13 +30,13 @@ function doPost(event){
   const raw=event&&event.postData&&event.postData.contents;if(!raw||raw.length>15000)throw new Error('Invalid request.');
   const p=JSON.parse(raw),secret=PropertiesService.getScriptProperties().getProperty('API_SECRET');
   if(!secret||!equal_(String(p.secret||''),secret))throw new Error('Connection secret is incorrect.');
-  lock=LockService.getScriptLock();if(!lock.tryLock(20000))throw new Error('Another player is updating the calendar. Try again.');
   const ss=SpreadsheetApp.openById(spreadsheetId_()),sheet=ss.getSheetByName('Reservations'),rosterSheet=ss.getSheetByName('Roster');
   if(!sheet||!rosterSheet)throw new Error('Reservations or Roster tab is missing.');
   checkHeaders_(sheet.getRange(1,1,1,COLUMNS.length).getDisplayValues()[0]);
   const roster=rosterSheet.getLastRow()>1?rosterSheet.getRange(2,1,rosterSheet.getLastRow()-1,1).getDisplayValues().map(r=>r[0].trim()).filter(Boolean):[];
+  if(p.action==='list')return reply_({ok:true,sheetId:spreadsheetId_(),matches:read_(sheet),roster:roster});
+  lock=LockService.getScriptLock();if(!lock.tryLock(20000))throw new Error('Another player is updating the calendar. Try again.');
   let matches=read_(sheet);
-  if(p.action==='list')return reply_({ok:true,sheetId:spreadsheetId_(),matches:matches,roster:roster});
   if(!roster.includes(p.player)&&!guest_(p.player))throw new Error('Choose a club player or enter a guest name.');
   if(!['create','edit','join','leave','cancel','remove'].includes(p.action)||typeof p.requestId!=='string'||!/^[a-zA-Z0-9_-]{16,100}$/.test(p.requestId))throw new Error('Invalid action.');
   if(p.action==='join'&&practice_(p.id)&&guest_(p.player))throw new Error('Club practice is NOT open to guests.');
@@ -70,7 +70,7 @@ function doPost(event){
   }
   SpreadsheetApp.flush();
   props.setProperty(receiptKey,JSON.stringify({fingerprint:fingerprint,at:Date.now()}));
-  const receipts=Object.keys(props.getProperties()).filter(k=>k.indexOf('request_')===0);if(receipts.length>200){receipts.sort((a,b)=>JSON.parse(props.getProperty(a)).at-JSON.parse(props.getProperty(b)).at).slice(0,receipts.length-200).forEach(k=>props.deleteProperty(k));}
+  const all=props.getProperties(),receipts=Object.keys(all).filter(k=>k.indexOf('request_')===0);if(receipts.length>200){receipts.sort((a,b)=>JSON.parse(all[a]).at-JSON.parse(all[b]).at).slice(0,receipts.length-200).forEach(k=>props.deleteProperty(k));}
   return reply_({ok:true,sheetId:spreadsheetId_(),matches:matches,roster:roster});
  }catch(error){return reply_({ok:false,error:error&&error.message?error.message:'The request could not be completed.'});}
  finally{if(lock)lock.releaseLock();}
@@ -84,8 +84,7 @@ function practice_(id){
 }
 function read_(sheet){
  const count=sheet.getLastRow()-1;if(count<=0)return [];if(count>10000)throw new Error('Reservation history is too large. Archive older rows first.');
- const values=sheet.getRange(2,1,count,COLUMNS.length).getValues(),display=sheet.getRange(2,1,count,COLUMNS.length).getDisplayValues();
- return values.map((r,i)=>({id:String(r[0]),date:display[i][1],start:display[i][2],end:display[i][3],court:String(r[4]),capacity:r[5]==='Unlimited'?null:Number(r[5]),kind:practice_(String(r[0]))?'practice':undefined,host:String(r[6]),players:String(r[7]||'').split('\n').filter(Boolean),notes:String(r[8]||''),version:Number(r[10])||1,_row:i+2})).filter(m=>m.id);
+ return sheet.getRange(2,1,count,COLUMNS.length).getDisplayValues().map((r,i)=>({id:r[0],date:r[1],start:r[2],end:r[3],court:r[4],capacity:r[5]==='Unlimited'?null:Number(r[5]),kind:practice_(r[0])?'practice':undefined,host:r[6],players:r[7].split('\n').filter(Boolean),notes:r[8],version:Number(r[10])||1,_row:i+2})).filter(m=>m.id);
 }
 function validate_(p,now,rosterSize){
  if(!p||typeof p.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(p.date)||isNaN(Date.parse(p.date))||new Date(p.date).toISOString().slice(0,10)!==p.date)throw new Error('Choose a valid date.');
@@ -98,9 +97,11 @@ function validate_(p,now,rosterSize){
 function write_(sheet,row,m){
  const day=Date.parse(m.date+'T00:00:00Z')/86400000+25569;
  const time=s=>{const p=s.split(':').map(Number);return (p[0]*60+p[1])/1440;};
- const literal=s=>/^[=+\-@]/.test(String(s))?"'"+s:s;
- sheet.getRange(row,1,1,COLUMNS.length).setValues([[m.id,day,time(m.start),time(m.end),literal(m.court),m.kind==='practice'?'Unlimited':m.capacity,literal(m.host),literal(m.players.join('\n')),literal(m.notes),new Date().toISOString(),m.version]]);
- sheet.getRange(row,2).setNumberFormat('yyyy-mm-dd');sheet.getRange(row,3,1,2).setNumberFormat('hh:mm');sheet.getRange(row,8,1,2).setWrap(true);
+ const literal=s=>s===''?s:"'"+s;
+ if(row>sheet.getMaxRows())sheet.insertRowsAfter(sheet.getMaxRows(),row-sheet.getMaxRows());
+ sheet.getRange(row,2).setNumberFormat('yyyy-mm-dd');sheet.getRange(row,3,1,2).setNumberFormat('hh:mm');
+ sheet.getRange(row,1,1,COLUMNS.length).setValues([[literal(m.id),day,time(m.start),time(m.end),literal(m.court),m.kind==='practice'?'Unlimited':m.capacity,literal(m.host),literal(m.players.join('\n')),literal(m.notes),new Date().toISOString(),m.version]]);
+ sheet.getRange(row,8,1,2).setWrap(true);
 }
 function equal_(a,b){let mismatch=a.length^b.length;for(let i=0;i<b.length;i++)mismatch|=(a.charCodeAt(i)||0)^b.charCodeAt(i);return mismatch===0;}
 function reply_(value){if(value.ok===true)value.apiVersion=2;return ContentService.createTextOutput(JSON.stringify(value,(key,v)=>key==='_row'?undefined:v)).setMimeType(ContentService.MimeType.JSON);}
