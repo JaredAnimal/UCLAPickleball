@@ -74,7 +74,7 @@ function render(){
  for(let i=0;i<6;i++){
   const key=addDays(windowStart,i),today=key===localToday(),dayMatches=matchesForDate(key,matches).filter(live);
   const button=document.createElement('button');button.className='day'+(key===selected?' selected':'')+(today?' today':'');button.setAttribute('aria-label',`${today?'Today, ':''}${dayLabel(key,{weekday:'long',month:'short',day:'numeric',year:'numeric'})}, ${dayMatches.length} reservation${dayMatches.length===1?'':'s'}`);button.setAttribute('aria-pressed',String(key===selected));
-  button.innerHTML=`<span class="dayheading"><span class="dayname">${today?'Today':dayLabel(key,{weekday:'short'})}</span><span class="daynum">${dateObj(key).getUTCDate()}</span></span>`+dayMatches.slice(0,4).map(m=>{const mine=m.host===user||m.players.includes(user),practice=isPractice(m),full=!practice&&m.players.length>=m.capacity;return `<span class="chip ${mine?'mine':full?'full':''}"><span class="chiprow"><span class="chiptime">${esc(chipTime(m.start))}</span>${spots(m,6)}</span><span>${practice?'Club practice':`<b class="chiphost">${esc(playerName(m.host).split(' ')[0])}</b>`+(isGuest(m.host)?' <span class="guest-tag">[guest]</span>':'')+` · ${full?'Full':m.capacity-m.players.length+' open'}`}</span></span>`}).join('')+(dayMatches.length>4?`<span class="small">+${dayMatches.length-4} more</span>`:dayMatches.length?'':`<span class="dayempty">${loaded?'No matches yet':'Loading…'}</span>`);
+  button.innerHTML=`<span class="dayheading"><span class="dayname">${today?'Today':dayLabel(key,{weekday:'short'})}</span><span class="daynum">${dateObj(key).getUTCDate()}</span></span>`+dayMatches.slice(0,4).map(m=>{const mine=m.host===user||m.players.includes(user),practice=isPractice(m),full=!practice&&m.players.length>=m.capacity;return `<span class="chip ${mine?'mine':full?'full':''}"><span class="chiprow"><span class="chiptime">${esc(chipTime(m.start))}</span>${spots(m,6)}</span><span>${practice?'Club practice':`<b class="chiphost">${esc(playerName(m.host).split(' ')[0])}</b>`+(isGuest(m.host)?' <span class="guest-tag">[guest]</span>':'')+` · ${started(m)?'Started':full?'Full':m.capacity-m.players.length+' open'}`}</span></span>`}).join('')+(dayMatches.length>4?`<span class="small">+${dayMatches.length-4} more</span>`:dayMatches.length?'':`<span class="dayempty">${loaded?'No matches yet':'Loading…'}</span>`);
   button.onclick=()=>{selected=key;if(!$('g-'+key))listFilter='all';render();$('g-'+key)?.parentNode.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'})};$('calendar').append(button);
  }
  // Matches list: every match in the six days, grouped by day and filtered; finished matches drop off.
@@ -94,7 +94,7 @@ function render(){
    if(own){add('Edit',()=>openEditor(m),'',past);add('Cancel match',async()=>{if(confirm('Cancel this reservation for everyone?')&&await mutate('cancel',{id:m.id}))toast('Reservation canceled.')},'danger');}
    else if(joined)add(practice?'Leave practice':'Leave match',()=>signup(m,false),'',past);
    else if(practice&&isGuest(user))add('Members only',()=>{},'',true);
-   else if(past||available>0)add(past?'Closed':practice?'Join practice':'Join match',()=>signup(m,true),'primary',past);
+   else if(!past&&available>0)add(practice?'Join practice':'Join match',()=>signup(m,true),'primary');
    if(actions.firstChild)card.append(actions);block.append(card);
   });
  }
@@ -137,4 +137,5 @@ $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('toda
 const autoRefresh=()=>{if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};window.addEventListener('focus',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);
 setInterval(()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}autoRefresh();},30000);
 try{const c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(Array.isArray(c?.matches)&&Array.isArray(c.roster)&&Date.now()-c.savedAt<7*864e5){matches=c.matches;ROSTER=c.roster;configured=loaded=fromDevice=true}}catch{}
+const bar=document.querySelector('.sidehead');if(bar&&'ResizeObserver' in window)new ResizeObserver(()=>document.documentElement.style.setProperty('--stick',bar.offsetHeight+'px')).observe(bar);
 render();setBusy(false);void loadReservations();if(!user)openLogin();
