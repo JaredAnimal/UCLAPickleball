@@ -22,15 +22,15 @@ async function attempt(connection:SheetConnection,action:string,body:string,n:nu
  try{
   let res=await fetch(connection.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body,redirect:'manual',signal}),echo='';const t1=Date.now(),loc=res.headers.get('Location');
   if(res.status>=300&&res.status<400&&loc){res=await fetch(new URL(loc,connection.endpoint),{redirect:'follow',signal});echo=` echo=${Date.now()-t1}ms`;}
-  if(!res.ok)throw new Error('HTTP '+res.status);
+  if(!res.ok)throw Object.assign(new Error('HTTP '+res.status),{status:res.status});
   const text=await res.text();console.log(`sheet ${action} post=${t1-t0}ms${echo} attempt=${n}`);return text;
- }catch(error:any){console.log(`sheet ${action} ${error?.name==='TimeoutError'?'timeout':'failed'} attempt=${n} after=${Date.now()-t0}ms`);throw error;}
+ }catch(error:any){console.log(`sheet ${action} ${error?.name==='TimeoutError'?'timeout':'failed'}${error?.status?` status=${error.status}`:''} attempt=${n} after=${Date.now()-t0}ms`);throw error;}
 }
 export async function invokeSheet(connection:SheetConnection,payload:Record<string,unknown>):Promise<SheetResult>{
- const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret});let text='';
- for(let n=1;;n++){try{text=await attempt(connection,action,body,n);break;}catch(error:any){if(n===2)throw Object.assign(new Error(error?.name==='TimeoutError'?(action==='list'?READ_SLOW:SLOW):'Google Sheets is unavailable. Try refreshing.'),{uncertain:true});}}
+ const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret});let text='',tries=0;
+ for(let n=1;;n++){try{tries=n;text=await attempt(connection,action,body,n);break;}catch(error:any){if(n===2)throw Object.assign(new Error(error?.name==='TimeoutError'?(action==='list'?READ_SLOW:SLOW):'Google Sheets is unavailable. Try refreshing.'),{uncertain:true});}}
  let data:Record<string,unknown>;try{data=JSON.parse(text) as Record<string,unknown>;}catch(error){throw new Error('Google returned a sign-in page. Check the web app deployment settings.');}
- if(data.ok!==true)throw new Error(typeof data.error==='string'?data.error.replaceAll(expectedSheetId(),'[sheet]').slice(0,300):'Google Sheets did not confirm the update.');
+ if(data.ok!==true)throw Object.assign(new Error(typeof data.error==='string'?data.error.replaceAll(expectedSheetId(),'[sheet]').slice(0,300):'Google Sheets did not confirm the update.'),tries===2&&data.error==='Another player is updating the calendar. Try again.'?{uncertain:true}:{});
  if(data.apiVersion!==2)throw new Error('Update the Google connection script from Connect Google Sheet, then deploy a new version of the existing web app.');
  if(data.sheetId!==expectedSheetId())throw new Error('This connection points to a different spreadsheet.');
  if(!Array.isArray(data.matches)||!Array.isArray(data.roster)||data.matches.length>10000||data.roster.length>500)throw new Error('Unexpected reservation data from Google Sheets.');
