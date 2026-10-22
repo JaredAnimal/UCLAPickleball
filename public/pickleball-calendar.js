@@ -34,14 +34,14 @@ function showNotice(){
 }
 async function loadReservations(silent=false,fresh=false){
  if(loading||busy)return;loading=true;let stale=false;const saves=saveCount,early=window.reservationsRequest;window.reservationsRequest=null;$('refresh').disabled=true;
- try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy&&saves===saveCount){matches=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}const current=editing&&$('editor').open&&matches.find(m=>m.id===editing.id);if(current&&['date','start','end','court','capacity','notes'].every(k=>current[k]===editing[k]))editingVersion=current.version;loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>30;loadError=configured?(stale?loadError:''):'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
+ try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy&&saves===saveCount){matches=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}const current=editing&&$('editor').open&&matches.find(m=>m.id===editing.id);if(current&&['date','start','end','court','capacity','notes'].every(k=>current[k]===editing[k]))editingVersion=current.version;loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>30;loadError=configured?(stale?loadError:''):'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}render();if(configured&&user)ensurePlayerSession(user,3600000).catch(()=>{});}
  catch(error){fromDevice=false;loadError=problem(error,'Could not load reservations.');render();if(!silent)toast(loadError);}
  finally{loading=false;setBusy(busy);}
  if(stale)loadReservations(true,true);
 }
 function requireUser(){if(user)return true;openLogin();return false;}
-async function ensurePlayerSession(name){
- if(playerToken&&tokenPlayer===name&&tokenExpires>Date.now()+60000)return playerToken;
+async function ensurePlayerSession(name,margin=60000){
+ if(playerToken&&tokenPlayer===name&&tokenExpires>Date.now()+margin)return playerToken;
  if(sessionRequest?.name===name)return sessionRequest.promise;const promise=(async()=>{
  const response=await fetch('/api/player-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player:name})});
  const data=await response.json().catch(()=>({}));if(!response.ok||data.player!==name||typeof data.token!=='string')throw Error(data.error||'Could not confirm your player name. Please retry.');
