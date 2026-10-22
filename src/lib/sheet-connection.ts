@@ -16,10 +16,20 @@ export async function saveConnection(connection:SheetConnection){const data=JSON
 export type Reservation={id:string;date:string;start:string;end:string;court:string;capacity:number|null;kind?:'practice';host:string;players:string[];notes:string;version:number};
 export type SheetResult={ok:true;apiVersion:2;matches:Reservation[];roster:string[]};
 const SLOW='Google Sheets took too long to respond. Refresh to check whether your change saved.';
+const READ_SLOW='Google Sheets is slow right now. Try again in a moment.';
+async function attempt(connection:SheetConnection,action:string,body:string,n:number){
+ const t0=Date.now(),signal=AbortSignal.timeout(Number(env.SHEET_TIMEOUT_MS)||10000);
+ try{
+  let res=await fetch(connection.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body,redirect:'manual',signal}),echo='';const t1=Date.now(),loc=res.headers.get('Location');
+  if(res.status>=300&&res.status<400&&loc){res=await fetch(new URL(loc,connection.endpoint),{redirect:'follow',signal});echo=` echo=${Date.now()-t1}ms`;}
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const text=await res.text();console.log(`sheet ${action} post=${t1-t0}ms${echo} attempt=${n}`);return text;
+ }catch(error:any){console.log(`sheet ${action} ${error?.name==='TimeoutError'?'timeout':'failed'} attempt=${n} after=${Date.now()-t0}ms`);throw error;}
+}
 export async function invokeSheet(connection:SheetConnection,payload:Record<string,unknown>):Promise<SheetResult>{
- const response=await fetch(connection.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,secret:connection.secret}),redirect:'follow',signal:AbortSignal.timeout(25000)}).catch(error=>{throw new Error(error?.name==='TimeoutError'?SLOW:'Google Sheets is unavailable. Try refreshing.');});
- if(!response.ok)throw new Error('Google Sheets is unavailable. Try refreshing.');
- let data:Record<string,unknown>;try{data=await response.json() as Record<string,unknown>;}catch(error){throw new Error((error as Error)?.name==='TimeoutError'?SLOW:'Google returned a sign-in page. Check the web app deployment settings.');}
+ const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret});let text='';
+ for(let n=1;;n++){try{text=await attempt(connection,action,body,n);break;}catch(error:any){if(n===2)throw Object.assign(new Error(error?.name==='TimeoutError'?(action==='list'?READ_SLOW:SLOW):'Google Sheets is unavailable. Try refreshing.'),{uncertain:true});}}
+ let data:Record<string,unknown>;try{data=JSON.parse(text) as Record<string,unknown>;}catch(error){throw new Error('Google returned a sign-in page. Check the web app deployment settings.');}
  if(data.ok!==true)throw new Error(typeof data.error==='string'?data.error.replaceAll(expectedSheetId(),'[sheet]').slice(0,300):'Google Sheets did not confirm the update.');
  if(data.apiVersion!==2)throw new Error('Update the Google connection script from Connect Google Sheet, then deploy a new version of the existing web app.');
  if(data.sheetId!==expectedSheetId())throw new Error('This connection points to a different spreadsheet.');

@@ -8,6 +8,7 @@ declare namespace Cloudflare {
     BOT_SESSION_SECRET: string;
     SHEETS_ENCRYPTION_KEY: string;
     SHEETS_SPREADSHEET_ID: string;
+    SHEET_TIMEOUT_MS?: string;
   }
 }
 declare module '*.html' { const text: string; export default text; }

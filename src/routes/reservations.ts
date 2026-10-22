@@ -5,7 +5,7 @@ import {readCopy,writeCopy} from '../lib/reservation-copy';
 const MAX_OTHER_PLAYERS=7;
 export async function GET(request:Request){
  try{const [connection,copy]=await Promise.all([loadConnection(),readCopy()]);if(!connection)return json({configured:false,roster:ROSTER,matches:[]});if(copy&&new URL(request.url).searchParams.get('fresh')!=='1')return json({...copy.data,configured:true,copyAge:Math.floor((Date.now()-copy.savedAt)/1000)});const startedAt=Date.now(),data=await invokeSheet(connection,{action:'list'});await writeCopy(data,startedAt);return json({...data,configured:true,copyAge:0});}
- catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:error instanceof Error?error.message:'Could not load shared reservations.'},503);}
+ catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:error instanceof Error?error.message:'Could not load shared reservations.',uncertain:(error as any)?.uncertain||undefined},503);}
 }
 export async function POST(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
@@ -20,5 +20,5 @@ export async function POST(request:Request){
  if(['create','edit'].includes(p.action)){const m=p.reservation;if(!m||typeof m.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(m.date)||isNaN(Date.parse(m.date))||new Date(m.date).toISOString().slice(0,10)!==m.date||typeof m.start!=='string'||typeof m.end!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(m.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(m.end)||m.end<=m.start||typeof m.court!=='string'||!m.court.trim()||m.court.length>100||typeof m.notes!=='string'||m.notes.length>500||!Number.isInteger(m.capacity)||m.capacity<0)return json({error:'Check the reservation date, times, location and player limit.'},400);if(m.capacity>MAX_OTHER_PLAYERS)return json({error:'Choose up to 7 other players (8 on the court).'},400);}
  const connection=await loadConnection();if(!connection)return json({error:'Connect the Google Sheet before saving shared reservations.'},409);
  const data=await invokeSheet(connection,{action:p.action,player,requestId:p.requestId,id:p.id,expectedVersion:p.expectedVersion,reservation:p.reservation,target:p.target});await writeCopy(data);return json({...data,configured:true});
- }catch(error){if(error instanceof SyntaxError)return json({error:'Invalid request.'},400);console.error('Reservation write not confirmed',error instanceof Error?error.message:'Unknown');return json({error:error instanceof Error?error.message:'Could not confirm the update. Refresh before retrying.'},503);}
+ }catch(error){if(error instanceof SyntaxError)return json({error:'Invalid request.'},400);console.error('Reservation write not confirmed',error instanceof Error?error.message:'Unknown');return json({error:error instanceof Error?error.message:'Could not confirm the update. Refresh before retrying.',uncertain:(error as any)?.uncertain||undefined},503);}
 }
