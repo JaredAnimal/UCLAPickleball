@@ -15,25 +15,42 @@ export async function loadConnection():Promise<SheetConnection|null>{const row=a
 export async function saveConnection(connection:SheetConnection){const data=JSON.stringify({endpoint:connection.endpoint,secret:await seal(connection.secret)});await database().prepare('INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('google_sheets',data).run();await clearCopy();}
 export type Reservation={id:string;date:string;start:string;end:string;court:string;capacity:number|null;kind?:'practice';host:string;players:string[];notes:string;version:number};
 export type SheetResult={ok:true;apiVersion:2;matches:Reservation[];roster:string[]};
+export const UNAVAILABLE='Google Sheets is unavailable. Try refreshing.';
 const SLOW='Google Sheets took too long to respond. Refresh to check whether your change saved.';
 const READ_SLOW='Google Sheets is slow right now. Try again in a moment.';
-async function attempt(connection:SheetConnection,action:string,body:string,n:number){
- const t0=Date.now(),signal=AbortSignal.timeout(Number(env.SHEET_TIMEOUT_MS)||10000);
+const BUSY='Another player is updating the calendar. Try again.';
+// The script's own ok:false messages (pickleball-apps-script.gs): rejections are thrown before any change and are safe to show players; config errors are the owner's setup problems.
+// ponytail: exact match on the deployed script's wording; a reworded message counts as unknown (retry, then uncertain) until replies carry a code.
+const REJECTIONS=[BUSY,'Choose a club player or enter a guest name.','Club practice is NOT open to guests.','Practice IDs are reserved.','The retry contains different data. Refresh and try again.','This practice has ended.','Weekly club practices cannot be edited or canceled.','Reservation ID already exists.','This reservation no longer exists. Refresh the calendar.','Only the host can change this match or remove players.','This match has already started.','This match changed while you were editing. Refresh before saving.','Capacity cannot be lower than the current signup count.','You are already the host.','The last spot has been filled. Refresh the calendar.','Choose an attendee to remove.','Choose a valid date.','End time must be after start time.','Choose a future start time.','Check the location and notes.','Choose up to 7 other players (8 on the court).'];
+const CONFIG=/^(Set SPREADSHEET_ID |Connection secret is incorrect\.|Reservations or Roster tab is missing\.|Check these Reservations column headers|Reservation history is too large\.)/;
+const classify=(message:string)=>message===BUSY?'busy':REJECTIONS.includes(message)?'rejected':CONFIG.test(message)?'config':'internal';
+export const playerError=(error:unknown)=>{const e=error as {message?:string;rejected?:boolean;safe?:boolean}|null;return e?.rejected||e?.safe?String(e.message):UNAVAILABLE;};
+async function attempt(connection:SheetConnection,action:string,body:string,n:number,ms:number):Promise<Record<string,unknown>>{
+ const t0=Date.now(),signal=AbortSignal.timeout(ms);let leg='direct';
  try{
   let res=await fetch(connection.endpoint,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body,redirect:'manual',signal}),echo='';const t1=Date.now(),loc=res.headers.get('Location');
-  if(res.status>=300&&res.status<400&&loc){res=await fetch(new URL(loc,connection.endpoint),{redirect:'follow',signal});echo=` echo=${Date.now()-t1}ms`;}
-  if(!res.ok)throw Object.assign(new Error('HTTP '+res.status),{status:res.status});
-  const text=await res.text();console.log(`sheet ${action} post=${t1-t0}ms${echo} attempt=${n}`);return text;
- }catch(error:any){console.log(`sheet ${action} ${error?.name==='TimeoutError'?'timeout':'failed'}${error?.status?` status=${error.status}`:''} attempt=${n} after=${Date.now()-t0}ms`);throw error;}
+  if(res.status>=300&&res.status<400&&loc){const url=new URL(loc,connection.endpoint);if(url.hostname!=='script.googleusercontent.com')throw Object.assign(new Error('Google returned a sign-in page. Check the web app deployment settings.'),{status:res.status,signin:true});leg='echo';res=await fetch(url,{redirect:'follow',signal});echo=` echo=${Date.now()-t1}ms`;}
+  if(!res.ok)throw Object.assign(new Error(`Google returned HTTP ${res.status} (${leg}).`),{status:res.status});
+  const text=await res.text();console.log(`sheet ${action} post=${t1-t0}ms${echo} attempt=${n}`);
+  try{const data=JSON.parse(text);if(data&&typeof data==='object')return data;}catch{}
+  console.log(`sheet ${action} non-json status=${res.status} leg=${leg} type=${res.headers.get('content-type')} title=${/<title>([^<]{0,80})/i.exec(text)?.[1]??''} attempt=${n}`);
+  throw Object.assign(new Error(`Google returned a page instead of data (HTTP ${res.status}, ${leg}).`),{status:res.status});
+ }catch(error:any){const timeout=error?.name==='TimeoutError';console.log(`sheet ${action} ${timeout?'timeout':'failed'}${error?.status?` status=${error.status}`:''} attempt=${n} after=${Date.now()-t0}ms`);throw timeout||error?.status?error:new Error(`Could not reach Google (${leg}).`);}
 }
 export async function invokeSheet(connection:SheetConnection,payload:Record<string,unknown>):Promise<SheetResult>{
- const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret});let text='',tries=0;
- for(let n=1;;n++){try{tries=n;text=await attempt(connection,action,body,n);break;}catch(error:any){if(n===2)throw Object.assign(new Error(error?.name==='TimeoutError'?(action==='list'?READ_SLOW:SLOW):'Google Sheets is unavailable. Try refreshing.'),{uncertain:true});}}
- let data:Record<string,unknown>;try{data=JSON.parse(text) as Record<string,unknown>;}catch(error){throw new Error('Google returned a sign-in page. Check the web app deployment settings.');}
- if(data.ok!==true)throw Object.assign(new Error(typeof data.error==='string'?data.error.replaceAll(expectedSheetId(),'[sheet]').slice(0,300):'Google Sheets did not confirm the update.'),tries===2&&data.error==='Another player is updating the calendar. Try again.'?{uncertain:true}:{});
- if(data.apiVersion!==2)throw new Error('Update the Google connection script from Connect Google Sheet, then deploy a new version of the existing web app.');
- if(data.sheetId!==expectedSheetId())throw new Error('This connection points to a different spreadsheet.');
- if(!Array.isArray(data.matches)||!Array.isArray(data.roster)||data.matches.length>10000||data.roster.length>500)throw new Error('Unexpected reservation data from Google Sheets.');
+ const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret}),deadline=Date.now()+20000;let data:Record<string,unknown>,last:any,unknown=false;
+ const fail=(message:string,safe:boolean)=>Object.assign(new Error(message),unknown?{uncertain:true,safe}:safe?{rejected:true}:{});
+ for(let n=1;;n++){
+  if(n===2&&last?.name!=='TimeoutError')await new Promise(r=>setTimeout(r,300+Math.random()*500));
+  let reply:Record<string,unknown>|undefined;try{reply=await attempt(connection,action,body,n,Math.max(0,Math.min(Number(env.SHEET_TIMEOUT_MS)||10000,deadline-Date.now())));}catch(error:any){if(error.signin)throw fail(error.message,false);unknown=true;last=error;}
+  if(reply?.ok===true){data=reply;break;}
+  if(reply){const message=typeof reply.error==='string'?reply.error.replaceAll(expectedSheetId(),'[sheet]').slice(0,300):'Google Sheets did not confirm the update.',kind=classify(message);if(kind==='internal'){unknown=true;last=new Error(message);}else if(kind!=='busy'||n===2)throw fail(message,kind!=='config');else last=new Error(message);}
+  if(n===2)throw Object.assign(new Error(last.name==='TimeoutError'?(action==='list'?READ_SLOW:SLOW):last.message),{uncertain:true,safe:last.name==='TimeoutError'});
+ }
+ const landed=(message:string)=>Object.assign(new Error(message),action==='list'?{}:{uncertain:true});
+ if(data.apiVersion!==2)throw landed('Update the Google connection script from Connect Google Sheet, then deploy a new version of the existing web app.');
+ if(data.sheetId!==expectedSheetId())throw landed('This connection points to a different spreadsheet.');
+ if(!Array.isArray(data.matches)||!Array.isArray(data.roster)||data.matches.length>10000||data.roster.length>500)throw landed('Unexpected reservation data from Google Sheets.');
  const invalid=(row:any)=>!row||typeof row.id!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(row.date)||!/^\d{2}:\d{2}$/.test(row.start)||!/^\d{2}:\d{2}$/.test(row.end)||typeof row.host!=='string'||typeof row.court!=='string'||!Array.isArray(row.players)||!row.players.every((p:unknown)=>typeof p==='string')||!(row.kind==='practice'&&row.capacity===null||Number.isInteger(row.capacity)&&row.capacity>=0&&row.capacity<=500);
  const rows=data.matches.filter(row=>!invalid(row));if(rows.length<data.matches.length)console.error('Skipped reservation rows with invalid values',data.matches.length-rows.length);data.matches=rows;
  data.roster=data.roster.filter((name:unknown)=>typeof name==='string'&&name.length<=120);
