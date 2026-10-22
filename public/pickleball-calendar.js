@@ -26,7 +26,7 @@ let user='',selected=localToday(),windowStart=localToday(),editing=null,editingV
 try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 const problem=(error,fallback)=>error instanceof TypeError||/^(Timeout|Abort)Error$/.test(error?.name)?'Network problem. Check your connection and try again.':error?.message||fallback;
-function toast(message,ms=5000){const t=$('toast');t.textContent=message;clearTimeout(toastTimer);t.hidePopover?.();if(message)t.showPopover?.();toastTimer=setTimeout(()=>{t.textContent='';t.hidePopover?.()},ms);}
+function toast(message,ms=5000){const t=$('toast');if($('editor').open&&$('matchError').textContent===message)return;if(document.querySelector('dialog[open]')){t.hidePopover?.();t.showPopover?.()}t.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.textContent='',ms);}
 const posts=document.querySelectorAll('.post');
 const saveCopy=(m,r)=>{try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt:Date.now(),matches:m,roster:r}))}catch{}};
 function showNotice(){
@@ -148,15 +148,15 @@ async function run(op){
  setView();if(text)(failed&&!/changed/.test(text)&&op.reopen||toast)(text);settle();
 }
 function mutate(action,payload,applied,reopen){
- if(loadError){toast(loadError);$('matchError').textContent=loadError;loadReservations(true);}if(fromDevice||!loaded||loadError||!requireUser())return false;if(Date.now()-lastOp<400)return false;
+ if(loadError){$('matchError').textContent=loadError;toast(loadError);loadReservations(true);}if(fromDevice||!loaded||loadError||!requireUser())return false;if(Date.now()-lastOp<400)return false;
  const who=user,retry=['create','edit'].includes(action),signature=JSON.stringify({action,player:who,...payload});let saved;try{saved=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
  const requestId=retry&&saved?.signature===signature?saved.requestId:crypto.randomUUID(),op={action,payload,requestId,who,reopen},draft=JSON.parse(JSON.stringify(matches));
- try{applyLocal(draft,action,payload,requestId)}catch(error){const message=problem(error,'Could not confirm the update. Refresh before retrying.');toast(message);$('matchError').textContent=message;resync=true;settle();return false;}
+ try{applyLocal(draft,action,payload,requestId)}catch(error){const message=problem(error,'Could not confirm the update. Refresh before retrying.');$('matchError').textContent=message;toast(message);resync=true;settle();return false;}
  if(retry)try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
  pending.push(op);queue=queue.then(()=>run(op)).catch(console.error);lastOp=Date.now();matches=draft;applied?.();render();return true;
 }
 function signup(match,joining){if(mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
-const capacityHint=()=>{$('capacity').setCustomValidity(+$('capacity').value>7?'Choose up to 7 other players (8 on the court).':'');$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`+(+$('capacity').value===7?' (up to 7 others, 8 on the court)':'')};
+const capacityHint=()=>{$('capacity').setCustomValidity(+$('capacity').value>7?'Choose up to 7 other players (8 on the court).':+$('capacity').value<(+$('capacity').min||0)?'Keep room for the '+$('capacity').min+' already signed up.':'');$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`+(+$('capacity').value===7?' (up to 7 others, 8 on the court)':'')};
 function openEditor(match=null){
  if(!loaded||loadError||!requireUser())return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER.length-1));$('capacity').min=match?.players.length||0;$('notes').value=match?.notes??'';capacityHint();$('editor').showModal();
 }
@@ -171,4 +171,4 @@ const autoRefresh=()=>{const today=localToday();if(today!==lastToday){if(windowS
 window.addEventListener('focus',autoRefresh);window.addEventListener('online',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);setInterval(autoRefresh,30000);
 try{const c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(Array.isArray(c?.matches)&&Array.isArray(c.roster)&&Date.now()-c.savedAt<7*864e5){confirmed=matches=c.matches;ROSTER=c.roster;configured=loaded=fromDevice=true}}catch{}
 const bar=document.querySelector('.sidehead');if(bar&&'ResizeObserver' in window)new ResizeObserver(()=>document.documentElement.style.setProperty('--stick',bar.offsetHeight+'px')).observe(bar);
-render();void loadReservations();if(!user)openLogin();
+$('toast').showPopover?.();render();void loadReservations();if(!user)openLogin();
