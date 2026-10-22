@@ -3,7 +3,7 @@ import {ROSTER} from '../lib/pickleball-config';
 import {sessionPlayer} from '../lib/player-session';
 import {readCopy,writeCopy} from '../lib/reservation-copy';
 export async function GET(request:Request){
- try{const [connection,copy]=await Promise.all([loadConnection(),readCopy()]);if(!connection)return json({configured:false,roster:ROSTER,matches:[]});if(copy&&new URL(request.url).searchParams.get('fresh')!=='1')return json({...copy.data,configured:true,copyAge:Math.floor((Date.now()-copy.savedAt)/1000)});const data=await invokeSheet(connection,{action:'list'});await writeCopy(data);return json({...data,configured:true,copyAge:0});}
+ try{const [connection,copy]=await Promise.all([loadConnection(),readCopy()]);if(!connection)return json({configured:false,roster:ROSTER,matches:[]});if(copy&&new URL(request.url).searchParams.get('fresh')!=='1')return json({...copy.data,configured:true,copyAge:Math.floor((Date.now()-copy.savedAt)/1000)});const startedAt=Date.now(),data=await invokeSheet(connection,{action:'list'});await writeCopy(data,startedAt);return json({...data,configured:true,copyAge:0});}
  catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:error instanceof Error?error.message:'Could not load shared reservations.'},503);}
 }
 export async function POST(request:Request){

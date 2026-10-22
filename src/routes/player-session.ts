@@ -7,7 +7,7 @@ export async function POST(request:Request){
  try{
   const raw=await request.text();if(raw.length>1000)return json({error:'Invalid player name.'},400);
   const p=JSON.parse(raw)??{},connection=await loadConnection();
-  let roster=ROSTER;if(connection){const copy=await readCopy();if(copy&&Date.now()-copy.savedAt<=300000)roster=copy.data.roster;else{const data=await invokeSheet(connection,{action:'list'});await writeCopy(data);roster=data.roster;}}
+  let roster=ROSTER;if(connection){const copy=await readCopy();if(copy&&Date.now()-copy.savedAt<=300000)roster=copy.data.roster;else{const startedAt=Date.now(),data=await invokeSheet(connection,{action:'list'});await writeCopy(data,startedAt);roster=data.roster;}}
   const player=canonicalPlayer(p.player,roster);
   if(!player)return json({error:'Choose a name from the club roster or continue as guest.'},403);
   // Names intentionally use the club's honor system; the signed session binds writes to that choice.
