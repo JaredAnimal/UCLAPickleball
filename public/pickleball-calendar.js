@@ -121,7 +121,7 @@ async function mutate(action,payload,applied){
   const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();toast('Saving…',6e4);const send=async()=>fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await ensurePlayerSession(user)},body:JSON.stringify({action,player:user,requestId,...payload})});let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const data=await response.json().catch(()=>({}));if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;saveCount++;saveCopy(matches,ROSTER);
   try{sessionStorage.removeItem(PENDING_KEY)}catch{}return true;
  }catch(error){if(before)matches=before;failed=true;const message=problem(error,'Could not confirm the update. Refresh before retrying.');toast(message);$('matchError').textContent=message;return false;}
- finally{setBusy(false);render();if(failed)loadReservations(true);}
+ finally{setBusy(false);render();if(failed)loadReservations(true,true);}
 }
 async function signup(match,joining){if(await mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
 const capacityHint=()=>{$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`};

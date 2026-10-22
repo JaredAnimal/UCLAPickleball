@@ -152,8 +152,9 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 | `src/pages/calendar.html` | Calendar page and forms |
 | `public/pickleball-calendar.js` / `.css` | Calendar behavior and responsive styles |
 | `src/routes/` | Reservation, session, owner setup, and bot handlers |
+| `src/lib/reservation-copy.ts` | Copy of the latest confirmed Sheet response in D1, so the calendar loads instantly |
 | `src/lib/sheet-connection.ts` | Verified Google bridge and encrypted configuration |
 | `src/lib/admin-access.ts` | Owner password sessions and login throttling |
 | `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
-| `migrations/` | D1 schema for settings (including the short-lived reservations copy) and owner login throttling |
+| `migrations/` | D1 schema for settings (including the reservations copy) and owner login throttling |
