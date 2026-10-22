@@ -29,6 +29,6 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 - Public players must never receive the connection secret, encryption key, bot password, or owner password.
 - Owner settings use `/admin`, an independent password, signed HttpOnly cookies, and login throttling. Do not trust caller-supplied Sites identity headers on this standalone host.
 - Preserve the current Google Sheet and Apps Script deployment. Do not run Google `setup` or rotate the shared secret for routine website changes.
-- D1 stores settings and login throttling only. Do not import the old internship tracker or its personal data.
+- D1 stores settings, login throttling, and a copy of the latest Sheet reservations and roster (replaced on each confirmed Sheet read or write, re-read live once older than 30 s, cleared on reconnect). The Sheet stays the source of truth; the copy is only written from confirmed Sheet responses. Do not import the old internship tracker or its personal data.
 - Branch previews must use separate test data, not the production Sheet connection.
 - Read README.md for deployment, reconnecting the Sheet, and the source map.
