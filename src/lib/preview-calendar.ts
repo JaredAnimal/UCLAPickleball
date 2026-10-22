@@ -17,8 +17,9 @@ export async function previewCalendar(request:Request):Promise<SheetResult & {re
  try{if(row)copy=JSON.parse(row.value);}catch{}
  if(!copy||Date.now()-copy.savedAt>30000){
   const response=await fetch(origin+'/api/reservations',{signal:AbortSignal.timeout(30000),redirect:'manual'});
-  const data=await response.json() as SheetResult & {configured?:boolean;error?:string};
-  if(!response.ok||!data.configured||!Array.isArray(data.roster)||!Array.isArray(data.matches))throw new Error('The live calendar could not be loaded. Please retry.');
+  if(!response.ok)throw new Error('The live calendar could not be loaded. Please retry.');
+  const data=await response.json().catch(()=>null) as (SheetResult & {configured?:boolean;error?:string})|null;
+  if(!data||!data.configured||!Array.isArray(data.roster)||!Array.isArray(data.matches))throw new Error('The live calendar could not be loaded. Please retry.');
   copy={savedAt:Date.now(),data:{ok:true,apiVersion:2,roster:data.roster,matches:data.matches}};
   await db.prepare('INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('preview_reservations',JSON.stringify(copy)).run();
  }
