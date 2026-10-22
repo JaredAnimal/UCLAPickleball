@@ -9,7 +9,7 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 - Run `pnpm check` after changes affecting server or calendar behavior.
 - `pnpm dev` starts local Wrangler. `pnpm setup:local` generates ignored local secrets. `pnpm db:local` applies local migrations.
 - Tests mock Google and use a disposable D1 database. Never test by writing to the real Sheet without the user's explicit approval.
-- Open a pull request for changes. Do not merge or deploy unless the user requests it. Keep code changes separate from live data changes.
+- Push changes directly to `main` for this project unless the user explicitly requests a branch or pull request. Start from the latest `main` and preserve other changes. Keep code changes separate from live data changes.
 
 ## Preserve these club rules
 
