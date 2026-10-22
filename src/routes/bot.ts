@@ -4,7 +4,16 @@ import {attemptKey,attemptsAllowed,clearAttempts} from '../lib/admin-access';
 function page(unlocked=false,error='',status=200){
  const content=unlocked?`<h2>Pickleball automation bot <span class="beta-label">[BETA]</span></h2>
  <p class="muted">Your download hub for the club’s court reservation bot.</p>
- <section class="bot-status"><h3>Download Picklebot</h3><p>Windows only. Read README for instructions.</p><form method="get" action="/bot/download"><button class="primary" type="submit">Download for Windows (.zip)</button></form></section>
+ <section class="bot-status" aria-label="Picklebot download">
+ <form method="get" action="/bot/download">
+ <button class="primary bot-download" type="submit" aria-describedby="downloadDisclaimer">
+ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4"/></svg>
+ <span class="bot-download-label"><span>Download Picklebot</span><span class="bot-download-meta">For Windows</span></span>
+ <span class="bot-download-badge" aria-hidden="true">.ZIP</span>
+ </button>
+ </form>
+ <p class="bot-disclaimer" id="downloadDisclaimer">Windows only. Read README for instructions.</p>
+ </section>
  <div class="bot-footer"><a href="/">← Back to calendar</a><form method="post" action="/bot"><input type="hidden" name="action" value="lock"><button>Lock page</button></form></div>`:
  `<h2>Automation bot <span class="beta-label">[BETA]</span></h2><p class="muted">Enter the password to open the download page.</p>
  <form class="bot-form" method="post" action="/bot"><label for="password">Password</label><input id="password" name="password" type="password" required maxlength="200" autocomplete="off"><p class="error" role="alert">${error}</p><button class="primary">Unlock page</button></form><div class="bot-footer"><a href="/">← Back to calendar</a></div>`;
