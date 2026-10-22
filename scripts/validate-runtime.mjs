@@ -169,7 +169,7 @@ googleHook=async()=>new MockResponse(null,{status:302,headers:{Location:'https:/
 googleHook=null;googleReply=null;await sleep(Math.max(0,5100-(Date.now()-readFailedAt)));await age();{const k=listCalls;assert.equal((await publicCall('/api/reservations?fresh=1')).status,200);assert.equal(listCalls,k+1);}passed('5 s after a failed fresh read, Google is asked again');await putCopy(Date.now(),{ok:true,apiVersion:2,matches:[],roster:people});for(const p of people)tokens[p]=(await login(p)).token;
 quiet=true;const started=Date.now();let writes=0,slowest=0;
 for(const seed of [101,202,303])try{
- const rand=prng(seed),v6=seed!==101,tag=(o,code)=>v6?{...o,code}:o,pick=a=>a[Math.floor(rand()*a.length)],state=new Map(),receipts=new Map(),accepted=new Map(),effects=new Map(),bodies=new Map(),posts=new Map(),rngs=new Map(),ghosts=new Map(),lanes=new Map(),echoes=[],results=[],ids=[],add=(m,k)=>m.set(k,(m.get(k)||0)+1),
+ const rand=prng(seed),v6=seed!==101,tag=(o,code)=>v6?{...o,code}:o,pick=a=>a[Math.floor(rand()*a.length)],state=new Map(),receipts=new Map(),accepted=new Map(),effects=new Map(),bodies=new Map(),posts=new Map(),trace=new Map(),rngs=new Map(),ghosts=new Map(),lanes=new Map(),echoes=[],results=[],ids=[],add=(m,k)=>m.set(k,(m.get(k)||0)+1),
   view=()=>({ok:true,apiVersion:2,sheetId,roster:people,matches:[...state.values()].map(m=>({...m,players:[...m.players]})),...(v6?{at:Date.now()}:{})}),
   // Mirrors the .gs: receipt by requestId, create keyed by id, cancel by absence, edit by version, set semantics for join/leave/remove. receipt=false is a partial run. Seed 101 answers like Version 5 (no code, no rejection data, no time).
   script=(p,receipt=true)=>{const fp=JSON.stringify([p.action,p.player,p.id,p.expectedVersion,p.reservation,p.target]),seen=receipts.get(p.requestId),no=error=>v6?{...view(),ok:false,code:'rejected',error}:{ok:false,error},m=state.get(p.action==='create'?p.requestId:p.id);let changed=false;
@@ -185,14 +185,14 @@ for(const seed of [101,202,303])try{
  for(let i=0;i<15;i++){const id=`soak_${seed}_match_${i}`;ids.push(id);state.set(id,slot(id,people[i%3],1+i%3));}
  googleHook=async request=>{
   if(request.method==='GET'){const {reply,fault}=echoes[Number(new URL(request.url).searchParams.get('k'))];return fault<0.5?jr(reply):fault<0.7?page(200):fault<0.85?page(500):new MockResponse('{"ok"',{headers:{'Content-Length':'1000',Connection:'close'}});}
-  const text=await request.text(),p=JSON.parse(text),rid=p.requestId,rng=rngs.get(rid)??rngs.set(rid,prng(hash(seed+rid))).get(rid),x=rng();add(posts,rid);(bodies.get(rid)??bodies.set(rid,new Set()).get(rid)).add(text);
-  if(x<0.35)return jr(script(p));
-  if(x<0.45){if(rng()<0.5)script(p,false);return page(200);}
-  if(x<0.52)return page(502);
-  if(x<0.58)return new MockResponse('Too many requests',{status:429});
-  if(x<0.73){echoes.push({reply:script(p),fault:rng()});return new MockResponse(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?k='+(echoes.length-1)}});}
-  if(x<0.81)return jr(tag({ok:false,error:busy},'busy'));
-  if(x<0.90){const reply=script(p,false);return jr(reply.ok?tag({ok:false,error:`Service Spreadsheets failed while accessing document with id ${sheetId}.`},'internal'):reply);}
+  const text=await request.text(),p=JSON.parse(text),rid=p.requestId,rng=rngs.get(rid)??rngs.set(rid,prng(hash(seed+rid))).get(rid),x=rng(),fault=[[0.35,'ok'],[0.45,'html'],[0.52,'502'],[0.58,'429'],[0.73,'echo'],[0.81,'busy'],[0.90,'infra'],[1,'ghost']].find(([t])=>x<t)[1];add(posts,rid);(bodies.get(rid)??bodies.set(rid,new Set()).get(rid)).add(text);(trace.get(rid)??trace.set(rid,[]).get(rid)).push(`${fault}@${Date.now()-started}ms`);
+  if(fault==='ok')return jr(script(p));
+  if(fault==='html'){if(rng()<0.5)script(p,false);return page(200);}
+  if(fault==='502')return page(502);
+  if(fault==='429')return new MockResponse('Too many requests',{status:429});
+  if(fault==='echo'){echoes.push({reply:script(p),fault:rng()});return new MockResponse(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?k='+(echoes.length-1)}});}
+  if(fault==='busy')return jr(tag({ok:false,error:busy},'busy'));
+  if(fault==='infra'){const reply=script(p,false);return jr(reply.ok?tag({ok:false,error:`Service Spreadsheets failed while accessing document with id ${sheetId}.`},'internal'):reply);}
   const ghost=sleep(1100+rng()*300).then(()=>script(p));(ghosts.get(rid)??ghosts.set(rid,[]).get(rid)).push(ghost);return ghost.then(jr);};
  for(let i=0;i<100;i++){const op={rid:`soak_${seed}_${i}_request`,action:pick(['create','join','join','leave','remove','edit','cancel']),player:pick(people),id:pick(ids),target:pick(people),capacity:Math.floor(rand()*4),stale:rand()<0.2,gone:rand()<0.1};
   if(op.action==='create'){op.id=op.rid;ids.push(op.rid);}else if(op.gone)op.id=`soak_${seed}_gone_${i}`;
@@ -205,7 +205,7 @@ for(const seed of [101,202,303])try{
   if(status===200)assert.ok(accepted.get(rid)>=1,'200 but never applied: '+info);
   if(status===409||status===503&&!data.uncertain)assert.ok(!accepted.get(rid),'definite failure but applied: '+info);
   if(v6&&status===409&&data.error!==busy)assert.ok(Array.isArray(data.matches)&&Array.isArray(data.roster),'a rule rejection lost its sheet data: '+info);
-  assert.ok(!(effects.get(rid)>1),'applied twice: '+info);assert.ok(posts.get(rid)<=2,'more than 2 attempts: '+info);assert.equal(bodies.get(rid)?.size,1,'a retry changed the request: '+info);
+  assert.ok(!(effects.get(rid)>1),'applied twice: '+info);assert.ok(posts.get(rid)<=2,`more than 2 attempts (posts: ${trace.get(rid).join(', ')}): `+info);assert.equal(bodies.get(rid)?.size,1,'a retry changed the request: '+info);
   if(data.error)assert.doesNotMatch(data.error,/deploy|script|sign-in|spreadsheet|secret|tab|column|Exception|Service/i,info);
   assert.ok(ms<5000,`hung past the time budget (${ms} ms): `+info);slowest=Math.max(slowest,ms);}
  writes+=results.length;

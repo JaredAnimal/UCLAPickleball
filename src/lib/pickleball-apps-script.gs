@@ -76,7 +76,7 @@ function doPost(event){
   SpreadsheetApp.flush();at=Date.now();
   all[receiptKey]=JSON.stringify({fingerprint:fingerprint,at:at});props.setProperty(receiptKey,all[receiptKey]);
   lock.releaseLock();lock=null;
-  try{const receipts=Object.keys(all).filter(k=>k.indexOf('request_')===0);if(receipts.length>250)receipts.sort((a,b)=>JSON.parse(all[a]).at-JSON.parse(all[b]).at).slice(0,receipts.length-200).forEach(k=>props.deleteProperty(k));}catch(error){}
+  try{const receipts=Object.keys(all).filter(k=>k.indexOf('request_')===0);if(receipts.length>250)receipts.sort((a,b)=>JSON.parse(all[a]).at-JSON.parse(all[b]).at).slice(0,10).forEach(k=>props.deleteProperty(k));}catch(error){}
   return done();
  }catch(error){const code=['rejected','busy','config'].includes(error&&error.code)?error.code:'internal';return reply_(Object.assign({ok:false,code:code,error:error&&error.message?error.message:'The request could not be completed.'},code==='rejected'&&matches?{sheetId:sheetId,matches:matches,roster:roster,at:at}:{}));}
  finally{if(lock)lock.releaseLock();}
@@ -105,7 +105,9 @@ function write_(sheet,m){
  const time=s=>{const p=s.split(':').map(Number);return (p[0]*60+p[1])/1440;};
  const literal=s=>s===''?s:"'"+s;
  const row=m._row||sheet.getLastRow()+1;
- if(!m._row){const max=sheet.getMaxRows();if(row>max)sheet.insertRowsAfter(max,row-max+100);sheet.getRange(row,2,1,3).setNumberFormats([['yyyy-mm-dd','hh:mm','hh:mm']]);sheet.getRange(row,8,1,2).setWrap(true);}
+ if(!m._row){const max=sheet.getMaxRows();if(row>max)sheet.insertRowsAfter(max,row-max+100);sheet.getRange(row,8,1,2).setWrap(true);}
+ // Every write re-applies these: setValues keeps a cell's own format, so a hand-typed text date would read back as a serial number.
+ sheet.getRange(row,2,1,3).setNumberFormats([['yyyy-mm-dd','hh:mm','hh:mm']]);
  sheet.getRange(row,1,1,COLUMNS.length).setValues([[literal(m.id),day,time(m.start),time(m.end),literal(m.court),m.kind==='practice'?'Unlimited':m.capacity,literal(m.host),literal(m.players.join('\n')),literal(m.notes),new Date().toISOString(),m.version]]);
 }
 function equal_(a,b){let mismatch=a.length^b.length;for(let i=0;i<b.length;i++)mismatch|=(a.charCodeAt(i)||0)^b.charCodeAt(i);return mismatch===0;}
