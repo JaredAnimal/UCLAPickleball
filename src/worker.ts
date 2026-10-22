@@ -19,7 +19,7 @@ const routes: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = {
 
 export default {
   async fetch(request: Request, env: Cloudflare.Env): Promise<Response> {
-    let response: Response;
+    let response: Response, asset = false;
     try {
       const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
       const route = routes[path];
@@ -29,12 +29,14 @@ export default {
         response = handler ? await handler(request) : new Response('Method not allowed', {status:405, headers:{Allow:Object.keys(route).join(', ')}});
       } else {
         response = await env.ASSETS.fetch(request);
+        asset = true;
       }
     } catch (error) {
       console.error('Request failed', error instanceof Error ? error.name : 'Unknown');
       response = new Response('The calendar is temporarily unavailable. Please retry.', {status:503, headers:{'Cache-Control':'no-store'}});
     }
     const headers = new Headers(response.headers);
+    if (asset && response.status===200 && new URL(request.url).searchParams.has('v')) headers.set('Cache-Control','public, max-age=31536000, immutable');
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     headers.set('X-Frame-Options', 'SAMEORIGIN');
