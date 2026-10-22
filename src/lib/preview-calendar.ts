@@ -16,7 +16,7 @@ export async function previewCalendar(request:Request):Promise<SheetResult & {re
  let copy:{savedAt:number;data:SheetResult}|null=null;
  try{if(row)copy=JSON.parse(row.value);}catch{}
  if(!copy||Date.now()-copy.savedAt>30000){
-  const response=await fetch(origin+'/api/reservations',{signal:AbortSignal.timeout(30000),redirect:'error'});
+  const response=await fetch(origin+'/api/reservations',{signal:AbortSignal.timeout(30000),redirect:'manual'});
   const data=await response.json() as SheetResult & {configured?:boolean;error?:string};
   if(!response.ok||!data.configured||!Array.isArray(data.roster)||!Array.isArray(data.matches))throw new Error('The live calendar could not be loaded. Please retry.');
   copy={savedAt:Date.now(),data:{ok:true,apiVersion:2,roster:data.roster,matches:data.matches}};
