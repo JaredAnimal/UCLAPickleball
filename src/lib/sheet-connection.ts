@@ -47,12 +47,12 @@ async function attempt(connection:SheetConnection,action:string,body:string,n:nu
 }
 export async function invokeSheet(connection:SheetConnection,payload:Record<string,unknown>):Promise<SheetResult>{
  const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret}),sheetId=expectedSheetId(),start=Date.now(),deadline=start+(Number(env.SHEET_DEADLINE_MS)||20000);let data:Record<string,unknown>,last:any,unknown=false;
- const fail=(message:string,safe:boolean)=>Object.assign(new Error(message),unknown?{uncertain:true,safe}:safe?{rejected:true}:{});
+ const fail=(message:string,safe:boolean,busy=false)=>Object.assign(new Error(message),busy?{busy:true}:{},unknown?{uncertain:true,safe}:safe?{rejected:true}:{});
  for(let n=1;;n++){
   if(n===2&&last?.name!=='TimeoutError')await new Promise(r=>setTimeout(r,300+Math.random()*500));
   let reply:Record<string,unknown>|undefined;try{reply=await attempt(connection,action,body,n,Math.max(0,Math.min(Number(env.SHEET_TIMEOUT_MS)||10000,deadline-Date.now())));}catch(error:any){if(error.signin)throw fail(error.message,false);unknown=true;last=error;}
   if(reply?.ok===true){data=reply;break;}
-  if(reply){const message=typeof reply.error==='string'?reply.error.replaceAll(sheetId,'[sheet]').slice(0,300):'Google Sheets did not confirm the update.',kind=typeof reply.code==='string'&&['rejected','busy','config','internal'].includes(reply.code)?reply.code:classify(message);if(kind==='internal'){unknown=true;last=new Error(message);}else if(kind!=='busy'||n===2)throw Object.assign(fail(message,kind!=='config'),kind==='rejected'&&!unknown&&reply.sheetId===sheetId&&shaped(reply)?{data:tidy(reply)}:{});else last=new Error(message);}
+  if(reply){const message=typeof reply.error==='string'?reply.error.replaceAll(sheetId,'[sheet]').slice(0,300):'Google Sheets did not confirm the update.',kind=typeof reply.code==='string'&&['rejected','busy','config','internal'].includes(reply.code)?reply.code:classify(message);if(kind==='internal'){unknown=true;last=new Error(message);}else if(kind!=='busy'||n===2)throw Object.assign(fail(kind==='busy'?BUSY:message,kind!=='config',kind==='busy'),kind==='rejected'&&!unknown&&reply.sheetId===sheetId&&shaped(reply)?{data:tidy(reply)}:{});else last=new Error(BUSY);}
   if(n===2)throw Object.assign(new Error(last.name==='TimeoutError'?(action==='list'?READ_SLOW:SLOW):last.message),{uncertain:true,safe:last.name==='TimeoutError'});
  }
  const landed=(message:string)=>Object.assign(new Error(message),action==='list'?{}:{uncertain:true});

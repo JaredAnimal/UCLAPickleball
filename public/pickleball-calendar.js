@@ -135,12 +135,12 @@ const settle=()=>{if(!pending.length&&resync&&!loading){resync=false;loadReserva
 async function run(op){
  const {action,payload,requestId,who}=op;let data=null,text='',failed=false,sent=false;
  const send=async()=>{sent=false;const token=await ensurePlayerSession(who);sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:who,requestId,...payload})})};
- const save=async()=>{let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
+ const save=async()=>{let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,busy:d?.busy===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
  try{data=await save();}
  catch(error){
-  let e=error,unsure=sent&&(e.uncertain||!e.server&&navigator.onLine!==false);
-  // The script keeps a receipt per requestId, so the identical re-send returns the first result. Only a rule rejection (409) proves nothing landed; a busy lock says nothing about the first send.
-  if(unsure){await new Promise(r=>setTimeout(r,1500));try{data=await save();unsure=false;}catch(again){if(again.status===409&&!/^Another player is updating/.test(again.message)){e=again;unsure=false;}}}
+  const doubt=x=>sent&&(x.uncertain||!x.server&&navigator.onLine!==false);let e=error,unsure=doubt(e);
+  // The script keeps a receipt per requestId, so the identical re-send returns the first result. Only a rule rejection (409) proves nothing landed; a busy lock says nothing about a first send that may have landed, but a busy first send proves nothing applied, so it gets the same single re-send.
+  if(unsure||e.busy&&e.status===409){const was=unsure;await new Promise(r=>setTimeout(r,1500));try{data=await save();unsure=false;}catch(again){e=again;unsure=again.status===409&&!again.busy?false:was||doubt(again);}}
   if(unsure){const check=await verifySave(action,payload,requestId,who);data=check.data||null;if(check.state==='absent'){text='That didn’t save. Try again.';failed=true;}if(check.state==='unknown'){text='Couldn’t confirm the save yet. The list will update when Google responds.';confirmed=viewOf(confirmed,[op]);}}
   else if(!data){text=problem(e,'Could not confirm the update. Refresh before retrying.');failed=true;data=e.data||null;if(!data)resync=true;}
  }

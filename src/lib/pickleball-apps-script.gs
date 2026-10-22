@@ -74,7 +74,8 @@ function doPost(event){
    if(p.action==='cancel'){sheet.deleteRow(match._row);matches.splice(index,1);}else{match.version++;write_(sheet,match);}
   }
   SpreadsheetApp.flush();at=Date.now();
-  all[receiptKey]=JSON.stringify({fingerprint:fingerprint,at:at});props.setProperty(receiptKey,all[receiptKey]);
+  // The change is already flushed; a missing receipt only means a retry leans on the action's own idempotency.
+  try{all[receiptKey]=JSON.stringify({fingerprint:fingerprint,at:at});props.setProperty(receiptKey,all[receiptKey]);}catch(error){}
   lock.releaseLock();lock=null;
   try{const receipts=Object.keys(all).filter(k=>k.indexOf('request_')===0);if(receipts.length>250)receipts.sort((a,b)=>JSON.parse(all[a]).at-JSON.parse(all[b]).at).slice(0,10).forEach(k=>props.deleteProperty(k));}catch(error){}
   return done();
