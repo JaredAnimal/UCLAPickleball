@@ -104,6 +104,13 @@ await age();googleReply={...listOf('list-s'),delay:300};{const k=listCalls,all=a
 await age();googleReply={...listOf('list-k'),delay:400};{const k=listCalls,ctl=new AbortController(),first=publicCall('/api/reservations?fresh=1',{signal:ctl.signal}).catch(()=>null);await sleep(100);ctl.abort();await first;response=await publicCall('/api/reservations?fresh=1',{signal:AbortSignal.timeout(3000)});assert.equal(response.status,200);assert.equal((await response.json()).matches[0].id,'list-k');assert.equal(listCalls,k+1);}passed('a cancelled request does not strand the shared Google call');
 await age();googleReply={...listOf('list-g'),delay:300};{const t=Date.now();await publicCall('/api/reservations?fresh=1');const at=(await copyIs(['list-g'])).savedAt;assert.ok(at>=t&&at<t+250,'copy is stamped when the Sheet call starts');}passed('a live read stamps the copy with its start time');
 await age();googleReply=listOf('list-e');googleHook=async()=>{googleHook=null;await putCopy(Date.now()+1000,listOf('list-d'));};data=await ids('/api/reservations?fresh=1');assert.equal(data.matches[0].id,'list-e');await sleep(100);assert.equal((await copyRow()).data.matches[0].id,'list-d');passed('older copies never replace newer ones');
+await age();{const t=(await copyRow()).savedAt,{token,player}=await login('Alex Example'),put=(id,at)=>googleReply={...listOf(id),at},post=async rid=>assert.equal((await write(token,{...payload,player,requestId:rid})).status,200);
+put('at-older',t-1000);data=await ids('/api/reservations?fresh=1');assert.equal(data.matches[0].id,'at-older');await sleep(100);assert.equal((await copyRow()).savedAt,t);
+put('at-list',t+10);await ids('/api/reservations?fresh=1');assert.equal((await copyIs(['at-list'])).savedAt,t+10);
+put('at-write-old',t+5);await post('at_write_request_001');await sleep(100);assert.equal((await copyRow()).data.matches[0].id,'at-list');
+put('at-write-new',t+20);await post('at_write_request_002');assert.equal((await copyIs(['at-write-new'])).savedAt,t+20);
+put('at-future',Date.now()+36e5);await post('at_write_request_003');assert.ok((await copyIs(['at-future'])).savedAt<=Date.now());}
+passed('the script reply time orders the server copy: a late reply never replaces a newer copy, and a future time is capped at now');
 {const corrupt=()=>db.prepare("UPDATE app_settings SET value='{' WHERE key='google_sheets'").run();await reconnect();await putCopy(Date.now()-60000,listOf('list-p'));await ids('/api/reservations?fresh=1');await corrupt();assert.equal((await publicCall('/api/reservations?fresh=1')).status,200);passed('the decrypted connection is reused within the isolate instead of re-read');
 await reconnect();await putCopy(Date.now()-60000,listOf('list-p'));await corrupt();}response=await publicCall('/api/reservations');assert.equal(response.status,200);data=await response.json();assert.equal(data.configured,true);assert.equal(data.matches[0].id,'list-p');assert.equal((await publicCall('/api/reservations?fresh=1')).status,503);await cronFailsOnce();await reconnect();passed('plain reads serve the copy without loading the saved connection; the minute refresh logs an unreadable connection once and does not throw');
 {const k=listCalls;googleReply=listOf('list-cron');assert.equal((await cron()).outcome,'ok');assert.equal(listCalls,k+1);await copyIs(['list-cron']);}passed('the minute refresh reads the Sheet once and writes the server copy');
@@ -146,6 +153,13 @@ r=await run('timeout_reject_request',[stall,j({ok:false,error:full})]);assert.eq
 r=await run('bad_api_version_req',[j({...okBody,apiVersion:1})]);assert.equal(r.status,503);assert.equal(r.data.uncertain,true);assert.equal(r.data.error,UNAVAILABLE);passed('a confirmed write from the wrong script version is uncertain');
 for(const status of [503,429]){r=await run('http_twice_request_'+status,[html(status)]);assert.equal(r.status,503);assert.equal(r.data.uncertain,true);assert.equal(r.data.error,UNAVAILABLE);assert.equal(calls.length,2);}passed('HTTP 503 or 429 twice is uncertain');
 r=await run('budget_stall_request',[stall]);assert.equal(r.status,503);assert.equal(r.data.uncertain,true);assert.ok(r.ms<1900,`two stalls took ${r.ms} ms`);passed('two stalled attempts end at the deadline: attempt 2 gets only the time left');
+r=await run('code_rejected_request',[j({ok:false,code:'rejected',error:'A reworded rule.',sheetId,matches:[row('rej-ok','2099-10-25'),row('rej-bad','10/25/2025'),row('rej-old','2000-01-01')],roster:['Alex Example','x'.repeat(121)]})]);assert.equal(r.status,409);assert.equal(r.data.error,'A reworded rule.');assert.deepEqual(r.data.matches.map(m=>m.id),['rej-ok']);assert.deepEqual(r.data.roster,['Alex Example']);assert.equal(calls.length,1);
+r=await run('code_rejected_other_sheet',[j({ok:false,code:'rejected',error:full,sheetId:'another_sheet',matches:[row('rej-ok','2099-10-25')],roster:['Alex Example']})]);assert.equal(r.status,409);assert.equal(r.data.matches,undefined);
+r=await run('code_internal_then_ok',[j({ok:false,code:'internal',error:full}),j(okBody)]);assert.equal(r.status,200);assert.equal(calls.length,2);
+r=await run('code_internal_twice_req',[j({ok:false,code:'internal',error:'The sheet changed. Try again.'})]);assert.equal(r.status,503);assert.equal(r.data.uncertain,true);assert.equal(r.data.error,UNAVAILABLE);assert.equal(calls.length,2);
+r=await run('code_config_request',[j({ok:false,code:'config',error:'A new owner setup problem.'})]);assert.equal(r.status,503);assert.equal(r.data.uncertain,undefined);assert.equal(r.data.error,UNAVAILABLE);assert.equal(calls.length,1);
+r=await run('code_busy_then_ok_req',[j({ok:false,code:'busy',error:'Reworded busy.'}),j(okBody)]);assert.equal(r.status,200);assert.equal(calls.length,2);
+passed('a reply code decides over the message lists, and a rule rejection returns the checked sheet data with its 409');
 {const {token,player}=await login('Alex Example');for(const extra of [{action:'cancel',id:'fwd_match_001'},{action:'leave',id:'fwd_match_001'},{action:'remove',id:'fwd_match_001',target:'Blair Example'},{action:'edit',id:'fwd_match_001',expectedVersion:3}]){response=await write(token,{...payload,...extra,player,requestId:'forward_'+extra.action+'_request'});assert.equal(response.status,200,await response.clone().text());const sent=forwarded.at(-1);assert.equal(sent.action,extra.action);assert.equal(sent.id,'fwd_match_001');assert.equal(sent.requestId,'forward_'+extra.action+'_request');assert.equal(sent.target,extra.target);assert.equal(sent.expectedVersion,extra.expectedVersion);}}
 r=await run('cancel_html_twice_req',[html()],{action:'cancel',id:'fwd_match_001'});assert.equal(r.status,503);assert.equal(r.data.uncertain,true);assert.equal(r.posts,2);passed('cancel, leave, remove and edit reach Google with their ids; a cancel that gets HTML twice is uncertain');
 googleHook=j({ok:false,error:'Connection secret is incorrect.'});response=await call('/api/sheets-connection',{method:'POST',body:JSON.stringify({endpoint,secret:sheetSecret})});assert.equal(response.status,503);assert.equal((await response.json()).error,'Connection secret is incorrect.');
@@ -155,11 +169,11 @@ googleHook=async()=>new MockResponse(null,{status:302,headers:{Location:'https:/
 googleHook=null;googleReply=null;await sleep(Math.max(0,5100-(Date.now()-readFailedAt)));await age();{const k=listCalls;assert.equal((await publicCall('/api/reservations?fresh=1')).status,200);assert.equal(listCalls,k+1);}passed('5 s after a failed fresh read, Google is asked again');await putCopy(Date.now(),{ok:true,apiVersion:2,matches:[],roster:people});for(const p of people)tokens[p]=(await login(p)).token;
 quiet=true;const started=Date.now();let writes=0,slowest=0;
 for(const seed of [101,202,303])try{
- const rand=prng(seed),pick=a=>a[Math.floor(rand()*a.length)],state=new Map(),receipts=new Map(),accepted=new Map(),effects=new Map(),bodies=new Map(),posts=new Map(),rngs=new Map(),ghosts=new Map(),lanes=new Map(),echoes=[],results=[],ids=[],add=(m,k)=>m.set(k,(m.get(k)||0)+1),
-  view=()=>({ok:true,apiVersion:2,sheetId,roster:people,matches:[...state.values()].map(m=>({...m,players:[...m.players]}))}),
-  // Mirrors the .gs: receipt by requestId, create keyed by id, cancel by absence, edit by version, set semantics for join/leave/remove. receipt=false is a partial run.
-  script=(p,receipt=true)=>{const fp=JSON.stringify([p.action,p.player,p.id,p.expectedVersion,p.reservation,p.target]),seen=receipts.get(p.requestId),no=error=>({ok:false,error}),m=state.get(p.action==='create'?p.requestId:p.id);let changed=false;
-   if(seen)return seen===fp?view():no('The retry contains different data. Refresh and try again.');
+ const rand=prng(seed),v6=seed!==101,tag=(o,code)=>v6?{...o,code}:o,pick=a=>a[Math.floor(rand()*a.length)],state=new Map(),receipts=new Map(),accepted=new Map(),effects=new Map(),bodies=new Map(),posts=new Map(),rngs=new Map(),ghosts=new Map(),lanes=new Map(),echoes=[],results=[],ids=[],add=(m,k)=>m.set(k,(m.get(k)||0)+1),
+  view=()=>({ok:true,apiVersion:2,sheetId,roster:people,matches:[...state.values()].map(m=>({...m,players:[...m.players]})),...(v6?{at:Date.now()}:{})}),
+  // Mirrors the .gs: receipt by requestId, create keyed by id, cancel by absence, edit by version, set semantics for join/leave/remove. receipt=false is a partial run. Seed 101 answers like Version 5 (no code, no rejection data, no time).
+  script=(p,receipt=true)=>{const fp=JSON.stringify([p.action,p.player,p.id,p.expectedVersion,p.reservation,p.target]),seen=receipts.get(p.requestId),no=error=>v6?{...view(),ok:false,code:'rejected',error}:{ok:false,error},m=state.get(p.action==='create'?p.requestId:p.id);let changed=false;
+   if(seen)return seen===fp?view():tag({ok:false,error:'The retry contains different data. Refresh and try again.'},'internal');
    if(p.action==='create'){if(m&&m.host!==p.player)return no('Reservation ID already exists.');if(!m){state.set(p.requestId,slot(p.requestId,p.player,p.reservation.capacity));changed=true;}}
    else if(!m){if(p.action!=='cancel')return no('This reservation no longer exists. Refresh the calendar.');}
    else{if(['edit','cancel','remove'].includes(p.action)&&m.host!==p.player)return no('Only the host can change this match or remove players.');
@@ -177,8 +191,8 @@ for(const seed of [101,202,303])try{
   if(x<0.52)return page(502);
   if(x<0.58)return new MockResponse('Too many requests',{status:429});
   if(x<0.73){echoes.push({reply:script(p),fault:rng()});return new MockResponse(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?k='+(echoes.length-1)}});}
-  if(x<0.81)return jr({ok:false,error:busy});
-  if(x<0.90){const reply=script(p,false);return jr(reply.ok?{ok:false,error:`Service Spreadsheets failed while accessing document with id ${sheetId}.`}:reply);}
+  if(x<0.81)return jr(tag({ok:false,error:busy},'busy'));
+  if(x<0.90){const reply=script(p,false);return jr(reply.ok?tag({ok:false,error:`Service Spreadsheets failed while accessing document with id ${sheetId}.`},'internal'):reply);}
   const ghost=sleep(1100+rng()*300).then(()=>script(p));(ghosts.get(rid)??ghosts.set(rid,[]).get(rid)).push(ghost);return ghost.then(jr);};
  for(let i=0;i<100;i++){const op={rid:`soak_${seed}_${i}_request`,action:pick(['create','join','join','leave','remove','edit','cancel']),player:pick(people),id:pick(ids),target:pick(people),capacity:Math.floor(rand()*4),stale:rand()<0.2,gone:rand()<0.1};
   if(op.action==='create'){op.id=op.rid;ids.push(op.rid);}else if(op.gone)op.id=`soak_${seed}_gone_${i}`;
@@ -190,6 +204,7 @@ for(const seed of [101,202,303])try{
   assert.ok([200,409,503].includes(status),info);
   if(status===200)assert.ok(accepted.get(rid)>=1,'200 but never applied: '+info);
   if(status===409||status===503&&!data.uncertain)assert.ok(!accepted.get(rid),'definite failure but applied: '+info);
+  if(v6&&status===409&&data.error!==busy)assert.ok(Array.isArray(data.matches)&&Array.isArray(data.roster),'a rule rejection lost its sheet data: '+info);
   assert.ok(!(effects.get(rid)>1),'applied twice: '+info);assert.ok(posts.get(rid)<=2,'more than 2 attempts: '+info);assert.equal(bodies.get(rid)?.size,1,'a retry changed the request: '+info);
   if(data.error)assert.doesNotMatch(data.error,/deploy|script|sign-in|spreadsheet|secret|tab|column|Exception|Service/i,info);
   assert.ok(ms<5000,`hung past the time budget (${ms} ms): `+info);slowest=Math.max(slowest,ms);}
