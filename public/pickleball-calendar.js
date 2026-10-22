@@ -25,7 +25,7 @@ function matchesForDate(date,rows){const practice=practiceForDate(date),regular=
 let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastWrite=0,lastToday=localToday();
 try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
-const problem=(error,fallback)=>error instanceof TypeError?'Network problem. Check your connection and try again.':error?.message||fallback;
+const problem=(error,fallback)=>error instanceof TypeError||/^(Timeout|Abort)Error$/.test(error?.name)?'Network problem. Check your connection and try again.':error?.message||fallback;
 function toast(message,ms=5000){$('toast').textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').textContent='',ms);}
 const posts=document.querySelectorAll('.post');
 const saveCopy=(m,r)=>{try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt:Date.now(),matches:m,roster:r}))}catch{}};
@@ -34,9 +34,9 @@ function showNotice(){
  if(text){const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>loadReservations(false,true);notice.append(retry);}
 }
 async function loadReservations(silent=false,fresh=false){
- if(pending.length){if(!silent)resync=true;return;}if(loading)return;loading=true;let stale=false;const saves=saveCount,early=window.reservationsRequest;window.reservationsRequest=null;$('refresh').disabled=true;
- try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!pending.length&&saves===saveCount){confirmed=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>30;loadError=configured?(stale?loadError:''):'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}setView();if(configured&&user)ensurePlayerSession(user,3600000).catch(()=>{});}
- catch(error){fromDevice=false;loadError=problem(error,'Could not load reservations.');render();if(!silent)toast(loadError);}
+ if(pending.length){if(!silent){resync=true;toast('Refreshing after your save…');}return;}if(loading)return;loading=true;let stale=false;const saves=saveCount,early=window.reservationsRequest;window.reservationsRequest=null;if(!silent)$('refresh').disabled=true;
+ try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store',signal:AbortSignal.timeout?.(3e4)});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!pending.length&&saves===saveCount){confirmed=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>180;loadError=configured?(stale?loadError:''):'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}setView();if(configured&&user)ensurePlayerSession(user,3600000).catch(()=>{});}
+ catch(error){const keep=silent&&loaded&&!fromDevice&&!loadError;fromDevice=false;if(!keep)loadError=problem(error,'Could not load reservations.');render();if(!silent)toast(loadError);}
  finally{loading=false;$('refresh').disabled=fromDevice;}
  if(stale&&Date.now()-lastWrite>=3e4)loadReservations(true,true);settle();
 }
@@ -129,16 +129,21 @@ async function verifySave(action,payload,id,who){
  return seen?{data:seen,state:'absent'}:{state:'unknown'};
 }
 const settle=()=>{if(!pending.length&&resync&&!loading){resync=false;loadReservations(true,true);}};
-// ponytail: one save in flight at a time; queued-but-unsent ops are lost if the page closes while an earlier op is in flight (~2 s normally, up to the 25 s POST timeout plus the 30 s verify when Google stalls). Persist the queue in sessionStorage if that bites.
+// ponytail: one save in flight at a time; queued-but-unsent ops are lost if the page closes while an earlier op is in flight (~2 s normally, up to ~80 s when Google stalls: two 25 s POSTs plus the 30 s verify). Persist the queue in sessionStorage if that bites.
 async function run(op){
  const {action,payload,requestId,who}=op;let data=null,text='',failed=false,sent=false;
- try{const send=async()=>{sent=false;const token=await ensurePlayerSession(who);sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:who,requestId,...payload})})};let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const d=await response.json().catch(()=>({}));if(!response.ok||d.ok!==true)throw Object.assign(Error(d.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,uncertain:d.uncertain===true});data=d;}
+ const send=async()=>{sent=false;const token=await ensurePlayerSession(who);sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:who,requestId,...payload})})};
+ const save=async()=>{let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true});return d;};
+ try{data=await save();}
  catch(error){
-  if(sent&&(error.uncertain||!error.server&&navigator.onLine!==false)){const check=await verifySave(action,payload,requestId,who);data=check.data||null;if(check.state==='absent'){text='That didn’t save. Try again.';failed=true;}if(check.state==='unknown'){text='Couldn’t confirm the save yet. The list will update when Google responds.';confirmed=viewOf(confirmed,[op]);}}
-  else{text=problem(error,'Could not confirm the update. Refresh before retrying.');failed=resync=true;}
+  let e=error,unsure=sent&&(e.uncertain||!e.server&&navigator.onLine!==false);
+  // The script keeps a receipt per requestId, so the identical re-send returns the first result. Only a rule rejection (409) proves nothing landed; a busy lock says nothing about the first send.
+  if(unsure){await new Promise(r=>setTimeout(r,1500));try{data=await save();unsure=false;}catch(again){if(again.status===409&&!/^Another player is updating/.test(again.message)){e=again;unsure=false;}}}
+  if(unsure){const check=await verifySave(action,payload,requestId,who);data=check.data||null;if(check.state==='absent'){text='That didn’t save. Try again.';failed=true;}if(check.state==='unknown'){text='Couldn’t confirm the save yet. The list will update when Google responds.';confirmed=viewOf(confirmed,[op]);}}
+  else if(!data){text=problem(e,'Could not confirm the update. Refresh before retrying.');failed=resync=true;}
  }
- pending.splice(pending.indexOf(op),1);saveCount++;if(data){lastWrite=Date.now();confirmed=data.matches;ROSTER=data.roster||ROSTER;saveCopy(confirmed,ROSTER);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
- setView();if(text)(failed&&op.reopen||toast)(text);settle();
+ pending.splice(pending.indexOf(op),1);saveCount++;if(data){lastWrite=Date.now();loadError='';confirmed=data.matches;ROSTER=data.roster||ROSTER;saveCopy(confirmed,ROSTER);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
+ setView();if(text)(failed&&!/changed/.test(text)&&op.reopen||toast)(text);settle();
 }
 function mutate(action,payload,applied,reopen){
  if(loadError){toast(loadError);$('matchError').textContent=loadError;loadReservations(true);}if(fromDevice||!loaded||loadError||!requireUser())return false;if(Date.now()-lastOp<400)return false;
@@ -160,8 +165,8 @@ $('matchForm').onsubmit=event=>{event.preventDefault();const reservation={date:$
  if(!mutate(editing?'edit':'create',{...(editing?{id:editing.id,expectedVersion:editingVersion}:{}),reservation},show,reopen)){if(!$('editor').open)$('editor').showModal();return;}toast(was?'Reservation updated.':'Reservation posted.');};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>loadReservations(false,true);
-const autoRefresh=()=>{if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};window.addEventListener('focus',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);
-setInterval(()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}autoRefresh();},30000);
+const autoRefresh=()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};
+window.addEventListener('focus',autoRefresh);window.addEventListener('online',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);setInterval(autoRefresh,30000);
 try{const c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(Array.isArray(c?.matches)&&Array.isArray(c.roster)&&Date.now()-c.savedAt<7*864e5){confirmed=matches=c.matches;ROSTER=c.roster;configured=loaded=fromDevice=true}}catch{}
 const bar=document.querySelector('.sidehead');if(bar&&'ResizeObserver' in window)new ResizeObserver(()=>document.documentElement.style.setProperty('--stick',bar.offsetHeight+'px')).observe(bar);
 render();void loadReservations();if(!user)openLogin();

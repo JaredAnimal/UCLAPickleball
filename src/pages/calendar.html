@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>window.reservationsRequest=fetch('/api/reservations',{cache:'no-store'}).catch(()=>null)</script>
+<script>window.reservationsRequest=fetch('/api/reservations',{cache:'no-store',signal:AbortSignal.timeout?.(3e4)}).catch(()=>null)</script>
 <meta name="theme-color" content="#003b5c">
 <title>UCLA Club Pickleball</title>
 <link rel="icon" type="image/png" href="/favicon.png?v=__ASSET_VERSION__">
