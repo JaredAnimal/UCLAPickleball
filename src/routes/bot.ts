@@ -4,7 +4,7 @@ import {attemptKey,attemptsAllowed,clearAttempts} from '../lib/admin-access';
 function page(unlocked=false,error='',status=200){
  const content=unlocked?`<h2>Pickleball automation bot <span class="beta-label">[BETA]</span></h2>
  <p class="muted">Your download hub for the club’s court reservation bot.</p>
- <section class="bot-status"><h3>Download coming soon</h3><p>The bot download and setup instructions will be added here later.</p><button disabled>Download unavailable</button></section>
+ <section class="bot-status"><h3>Download Picklebot</h3><p>Windows only. Read README for instructions.</p><form method="get" action="/bot/download"><button class="primary" type="submit">Download for Windows (.zip)</button></form></section>
  <div class="bot-footer"><a href="/">← Back to calendar</a><form method="post" action="/bot"><input type="hidden" name="action" value="lock"><button>Lock page</button></form></div>`:
  `<h2>Automation bot <span class="beta-label">[BETA]</span></h2><p class="muted">Enter the password to open the download page.</p>
  <form class="bot-form" method="post" action="/bot"><label for="password">Password</label><input id="password" name="password" type="password" required maxlength="200" autocomplete="off"><p class="error" role="alert">${error}</p><button class="primary">Unlock page</button></form><div class="bot-footer"><a href="/">← Back to calendar</a></div>`;
