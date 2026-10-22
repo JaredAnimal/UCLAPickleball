@@ -8,19 +8,20 @@ const isGuest=name=>typeof name==='string'&&name.endsWith(guestSuffix)&&name.len
 const playerName=name=>isGuest(name)?name.slice(0,-guestSuffix.length):name;
 const playerHtml=name=>esc(playerName(name))+(isGuest(name)?' <span class="guest-tag">[guest]</span>':'');
 let loginMode='member',loginPending=false,playerToken='',tokenPlayer='',tokenExpires=0,sessionRequest=null,saveCount=0;
-const localToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const localToday=()=>laDay.format(new Date());
+const laDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}),laNow=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}),dayFormats={};
 const dateObj=s=>new Date(s+'T12:00:00Z');
 const dateKey=d=>`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
 const addDays=(s,n)=>{const d=dateObj(s);d.setUTCDate(d.getUTCDate()+n);return dateKey(d)};
-const dayLabel=(s,options)=>dateObj(s).toLocaleDateString('en-US',{...options,timeZone:'UTC'});
+const dayLabel=(s,options)=>(dayFormats[JSON.stringify(options)]??=new Intl.DateTimeFormat('en-US',{...options,timeZone:'UTC'})).format(dateObj(s));
 const timeLabel=t=>{const [h,m]=t.split(':').map(Number);return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`};
-function clubNow(){const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
+function clubNow(){const p=Object.fromEntries(laNow.formatToParts(new Date()).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
 const isPractice=m=>m.kind==='practice';
 const live=m=>`${m.date}T${m.end}`>clubNow(),chipTime=t=>timeLabel(t).replace(':00','');
 const started=m=>`${m.date}T${isPractice(m)?m.end:m.start}`<=clubNow();
 function practiceForDate(date){const weekday=dateObj(date).getUTCDay(),start=weekday===4?'17:00':weekday===0?'15:00':null;if(!start)return null;return {id:'practice-'+date,kind:'practice',date,start,end:weekday===4?'19:00':'17:00',court:'Club practice',capacity:null,host:'Club practice',players:[],notes:'Weekly club practice. NOT open to guests.',version:1};}
 function matchesForDate(date,rows){const practice=practiceForDate(date),regular=rows.filter(m=>m.date===date&&!m.id.startsWith('practice-'));if(practice){const saved=rows.find(m=>m.id===practice.id);regular.push({...practice,players:saved?.players||[],version:saved?.version||1});}return regular.sort((a,b)=>a.start.localeCompare(b.start));}
-let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastToday=localToday();
+let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastWrite=0,lastToday=localToday();
 try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 const problem=(error,fallback)=>error instanceof TypeError?'Network problem. Check your connection and try again.':error?.message||fallback;
@@ -36,7 +37,7 @@ async function loadReservations(silent=false,fresh=false){
  try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!pending.length&&saves===saveCount){confirmed=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>30;loadError=configured?(stale?loadError:''):'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}setView();if(configured&&user)ensurePlayerSession(user,3600000).catch(()=>{});}
  catch(error){fromDevice=false;loadError=problem(error,'Could not load reservations.');render();if(!silent)toast(loadError);}
  finally{loading=false;$('refresh').disabled=fromDevice;}
- if(stale)loadReservations(true,true);settle();
+ if(stale&&Date.now()-lastWrite>=3e4)loadReservations(true,true);settle();
 }
 function requireUser(){if(user)return true;openLogin();return false;}
 async function ensurePlayerSession(name,margin=60000){
@@ -133,7 +134,7 @@ async function run(op){
   if(sent&&(error.uncertain||!error.server&&navigator.onLine!==false)){const check=await verifySave(action,payload,requestId,who);data=check.data||null;if(check.state==='absent'){text='That didn’t save. Try again.';failed=true;}if(check.state==='unknown'){text='Couldn’t confirm the save yet. The list will update when Google responds.';confirmed=viewOf(confirmed,[op]);}}
   else{text=problem(error,'Could not confirm the update. Refresh before retrying.');failed=resync=true;}
  }
- pending.splice(pending.indexOf(op),1);saveCount++;if(data){confirmed=data.matches;ROSTER=data.roster||ROSTER;saveCopy(confirmed,ROSTER);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
+ pending.splice(pending.indexOf(op),1);saveCount++;if(data){lastWrite=Date.now();confirmed=data.matches;ROSTER=data.roster||ROSTER;saveCopy(confirmed,ROSTER);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
  setView();if(text)(failed&&op.reopen||toast)(text);settle();
 }
 function mutate(action,payload,applied,reopen){
