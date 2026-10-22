@@ -12,5 +12,5 @@ export async function POST(request:Request){
   if(!player)return json({error:'Choose a name from the club roster or continue as guest.'},403);
   // Names intentionally use the club's honor system; the signed session binds writes to that choice.
   return json(await issuePlayerSession(player));
- }catch(error){if(error instanceof SyntaxError)return json({error:'Invalid player name.'},400);return json({error:playerError(error)},503);}
+ }catch(error){if(error instanceof SyntaxError)return json({error:'Invalid player name.'},400);console.error('Player sign-in failed'+((error as any)?.cached?' (cached)':''),error instanceof Error?error.message:'Unknown');return json({error:playerError(error)},503);}
 }

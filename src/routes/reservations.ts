@@ -6,7 +6,7 @@ import {readCopy,writeCopy,refreshCopy} from '../lib/reservation-copy';
 const MAX_OTHER_PLAYERS=7;
 export async function GET(request:Request){
  try{const reply=(copy:{savedAt:number;data:object})=>json({...copy.data,configured:true,copyAge:Math.floor((Date.now()-copy.savedAt)/1000)}),copy=new URL(request.url).searchParams.get('fresh')==='1'?null:await readCopy();if(copy)return reply(copy);const connection=await loadConnection();if(!connection)return json({configured:false,roster:ROSTER,matches:[]});return reply(await refreshCopy(connection));}
- catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:playerError(error)},503);}
+ catch(error){console.error('Reservation read failed'+((error as any)?.cached?' (cached)':''),error instanceof Error?error.message:'Unknown');return json({configured:true,error:playerError(error)},503);}
 }
 export async function POST(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
