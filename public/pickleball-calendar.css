@@ -87,4 +87,4 @@ input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:0;border
 }
 @media(max-width:380px){.row{grid-template-columns:minmax(0,1fr);gap:0}h1{font-size:17px}}
 /* Day headers pin at top:52px, the one-line .sidehead height; keep it one line on small phones and in the 340px side column. */
-@media(max-width:380px),(min-width:1101px){.side h3{font-size:18px}.filter{padding:6px 10px}}
+@media(max-width:430px),(min-width:1101px){.side h3{font-size:18px}.filter{padding:6px 10px}}
