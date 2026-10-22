@@ -20,7 +20,7 @@ const live=m=>`${m.date}T${m.end}`>clubNow(),chipTime=t=>timeLabel(t).replace(':
 const started=m=>`${m.date}T${isPractice(m)?m.end:m.start}`<=clubNow();
 function practiceForDate(date){const weekday=dateObj(date).getUTCDay(),start=weekday===4?'17:00':weekday===0?'15:00':null;if(!start)return null;return {id:'practice-'+date,kind:'practice',date,start,end:weekday===4?'19:00':'17:00',court:'Club practice',capacity:null,host:'Club practice',players:[],notes:'Weekly club practice. NOT open to guests.',version:1};}
 function matchesForDate(date,rows){const practice=practiceForDate(date),regular=rows.filter(m=>m.date===date&&!m.id.startsWith('practice-'));if(practice){const saved=rows.find(m=>m.id===practice.id);regular.push({...practice,players:saved?.players||[],version:saved?.version||1});}return regular.sort((a,b)=>a.start.localeCompare(b.start));}
-let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastToday=localToday();
+let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastToday=localToday();
 try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 const problem=(error,fallback)=>error instanceof TypeError?'Network problem. Check your connection and try again.':error?.message||fallback;
@@ -32,11 +32,11 @@ function showNotice(){
  if(text){const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>loadReservations(false,true);notice.append(retry);}
 }
 async function loadReservations(silent=false,fresh=false){
- if(loading)return;loading=true;let stale=false;const saves=saveCount,early=window.reservationsRequest;window.reservationsRequest=null;$('refresh').disabled=true;
+ if(loading||pending.length)return;loading=true;let stale=false;const saves=saveCount,early=window.reservationsRequest;window.reservationsRequest=null;$('refresh').disabled=true;
  try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!pending.length&&saves===saveCount){confirmed=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>30;loadError=configured?(stale?loadError:''):'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}setView();if(configured&&user)ensurePlayerSession(user,3600000).catch(()=>{});}
  catch(error){fromDevice=false;loadError=problem(error,'Could not load reservations.');render();if(!silent)toast(loadError);}
  finally{loading=false;$('refresh').disabled=fromDevice;}
- if(stale)loadReservations(true,true);
+ if(stale)loadReservations(true,true);settle();
 }
 function requireUser(){if(user)return true;openLogin();return false;}
 async function ensurePlayerSession(name,margin=60000){
@@ -124,25 +124,25 @@ async function verifySave(action,payload,id,who){
  const t0=Date.now(),end=t0+30e3;let seen=null;for(const at of [3e3,8e3,15e3]){await new Promise(r=>setTimeout(r,Math.max(0,t0+at-Date.now())));if(Date.now()>=end)break;try{const r=await fetch('/api/reservations?fresh=1',{cache:'no-store',signal:AbortSignal.timeout?.(Math.max(1e3,end-Date.now()))});const d=await r.json();if(r.ok&&Array.isArray(d.matches)){if(landed(d.matches,action,payload,id,who))return {data:d,state:'present'};seen=d}}catch{}}
  return seen?{data:seen,state:'absent'}:{state:'unknown'};
 }
-const settle=()=>{if(!pending.length&&resync){resync=false;loadReservations(true,true);}};
-// ponytail: one save in flight at a time; queued-but-unsent ops are lost if the page closes within the ~2 s an earlier op is in flight. Persist the queue in sessionStorage if that bites.
+const settle=()=>{if(!pending.length&&resync&&!loading){resync=false;loadReservations(true,true);}};
+// ponytail: one save in flight at a time; queued-but-unsent ops are lost if the page closes while an earlier op is in flight (~2 s normally, up to the 25 s POST timeout plus the 30 s verify when Google stalls). Persist the queue in sessionStorage if that bites.
 async function run(op){
- const {action,payload,requestId,who}=op;let data=null,text='',sent=false;
- try{const send=async()=>{sent=false;const token=await ensurePlayerSession(who);sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:who,requestId,...payload})})};let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const d=await response.json().catch(()=>({}));if(!response.ok||d.ok!==true)throw Object.assign(Error(d.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,uncertain:d.uncertain===true});data=d;}
+ const {action,payload,requestId,who}=op;let data=null,text='',failed=false,sent=false;
+ try{const send=async()=>{sent=false;const token=await ensurePlayerSession(who);sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:who,requestId,...payload})})};let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const d=await response.json().catch(()=>({}));if(!response.ok||d.ok!==true)throw Object.assign(Error(d.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,uncertain:d.uncertain===true});data=d;}
  catch(error){
-  if(sent&&(error.uncertain||!error.server&&navigator.onLine!==false)){const check=await verifySave(action,payload,requestId,who);data=check.data||null;if(check.state==='absent')text='That didn’t save. Try again.';if(check.state==='unknown'){text='Couldn’t confirm the save yet. The list will update when Google responds.';confirmed=viewOf(confirmed,[op]);}}
-  else{text=problem(error,'Could not confirm the update. Refresh before retrying.');resync=true;}
+  if(sent&&(error.uncertain||!error.server&&navigator.onLine!==false)){const check=await verifySave(action,payload,requestId,who);data=check.data||null;if(check.state==='absent'){text='That didn’t save. Try again.';failed=true;}if(check.state==='unknown'){text='Couldn’t confirm the save yet. The list will update when Google responds.';confirmed=viewOf(confirmed,[op]);}}
+  else{text=problem(error,'Could not confirm the update. Refresh before retrying.');failed=resync=true;}
  }
- pending.shift();saveCount++;if(data){confirmed=data.matches;ROSTER=data.roster||ROSTER;saveCopy(confirmed,ROSTER);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
- setView();if(text)toast(text);settle();
+ pending.splice(pending.indexOf(op),1);saveCount++;if(data){confirmed=data.matches;ROSTER=data.roster||ROSTER;saveCopy(confirmed,ROSTER);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
+ setView();if(text)(failed&&op.reopen||toast)(text);settle();
 }
-function mutate(action,payload,applied){
- if(loadError){toast(loadError);$('matchError').textContent=loadError;loadReservations(true);}if(fromDevice||!loaded||loadError||!requireUser())return false;
+function mutate(action,payload,applied,reopen){
+ if(loadError){toast(loadError);$('matchError').textContent=loadError;loadReservations(true);}if(fromDevice||!loaded||loadError||!requireUser())return false;if(Date.now()-lastOp<400)return false;
  const who=user,retry=['create','edit'].includes(action),signature=JSON.stringify({action,player:who,...payload});let saved;try{saved=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
- const requestId=retry&&saved?.signature===signature?saved.requestId:crypto.randomUUID(),op={action,payload,requestId,who},draft=JSON.parse(JSON.stringify(matches));
+ const requestId=retry&&saved?.signature===signature?saved.requestId:crypto.randomUUID(),op={action,payload,requestId,who,reopen},draft=JSON.parse(JSON.stringify(matches));
  try{applyLocal(draft,action,payload,requestId)}catch(error){const message=problem(error,'Could not confirm the update. Refresh before retrying.');toast(message);$('matchError').textContent=message;resync=true;settle();return false;}
  if(retry)try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
- pending.push(op);matches=draft;applied?.();render();queue=queue.then(()=>run(op)).catch(()=>{});return true;
+ pending.push(op);queue=queue.then(()=>run(op)).catch(console.error);lastOp=Date.now();matches=draft;applied?.();render();return true;
 }
 function signup(match,joining){if(mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
 const capacityHint=()=>{$('capacity').setCustomValidity(+$('capacity').value>7?'Choose up to 7 other players (8 on the court).':'');$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`+(+$('capacity').value===7?' (up to 7 others, 8 on the court)':'')};
@@ -151,7 +151,9 @@ function openEditor(match=null){
 }
 $('capacity').oninput=capacityHint;document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const c=$('capacity');c.value=Math.min(+c.max||42,Math.max(0,(+c.value||0)+ +b.dataset.step));capacityHint()});
 posts.forEach(b=>b.onclick=()=>openEditor());document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{listFilter=b.dataset.filter;render()});$('closeEditor').onclick=()=>$('editor').close();
-$('matchForm').onsubmit=event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};if(!mutate(editing?'edit':'create',{...(editing?{id:editing.id,expectedVersion:editingVersion}:{}),reservation},show)){if(!$('editor').open)$('editor').showModal();return;}toast('Reservation saved to Google Sheets.');};
+$('matchForm').onsubmit=event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();},was=editing,version=editingVersion;
+ const reopen=message=>{if(document.querySelector('dialog[open]'))return toast(message);openEditor(was);if(!$('editor').open)return toast(message);editingVersion=version;for(const k in reservation)$(k).value=reservation[k];capacityHint();$('matchError').textContent=message;};
+ if(!mutate(editing?'edit':'create',{...(editing?{id:editing.id,expectedVersion:editingVersion}:{}),reservation},show,reopen)){if(!$('editor').open)$('editor').showModal();return;}toast('Reservation saved to Google Sheets.');};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>loadReservations(false,true);
 const autoRefresh=()=>{if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};window.addEventListener('focus',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);
