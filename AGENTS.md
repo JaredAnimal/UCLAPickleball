@@ -20,7 +20,7 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 - Only a reservation's selected host may edit, cancel, or remove attendees. Enforce this in the Google bridge as well as the UI.
 - The automation button contains a blue `[BETA]` marker. Its page is password gated, with a placeholder until the user supplies a real download.
 - Sync notices are hidden during successful operation and shown on errors. Do not add a reservations-sheet link to the public header.
-- Preserve the pickleball image logo and mobile layout. Avoid large top slogans and a practice-schedule banner above the calendar.
+- Preserve the UCLA Pickleball circle logo (`public/ucla-pickleball-logo.webp`), the team-photo header band, and the mobile layout. Avoid large top slogans and a practice-schedule banner above the calendar.
 
 ## Data and secrets
 
