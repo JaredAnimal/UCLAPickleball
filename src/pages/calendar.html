@@ -79,6 +79,16 @@
   <p class="muted small">Honor system: use your own name. No password required.</p>
 </dialog>
 
+<dialog id="confirm" aria-labelledby="confirmTitle">
+  <h2 id="confirmTitle"></h2>
+  <p id="confirmDay"></p>
+  <p class="muted" id="confirmNote"></p>
+  <form method="dialog" class="modalactions">
+    <button value="" id="confirmKeep"></button>
+    <button value="ok" class="danger" id="confirmOk"></button>
+  </form>
+</dialog>
+
 <dialog id="editor" aria-labelledby="editorTitle">
   <h2 id="editorTitle" tabindex="-1" autofocus>Post a reservation</h2>
   <p class="muted small">Already booked a court? Share it with the club here.</p>
