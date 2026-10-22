@@ -1,4 +1,4 @@
-import {sameOrigin} from '../lib/sheet-connection';
+import {sameOrigin, tooLarge} from '../lib/sheet-connection';
 import {isOwner, ownerPasswordMatches, newOwnerCookie, ownerCookie, attemptKey, attemptsAllowed, clearAttempts} from '../lib/admin-access';
 
 function page(error = '', status = 200) {
@@ -10,6 +10,7 @@ export async function GET(request: Request) {
 }
 export async function POST(request: Request) {
   if (!sameOrigin(request)) return page('This request is not allowed.', 403);
+  if (tooLarge(request, 1000)) return page('Request is too large.', 413);
   try {
     const raw = await request.text();
     if (raw.length > 1000) return page('Request is too large.', 400);

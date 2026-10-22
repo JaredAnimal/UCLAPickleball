@@ -1,4 +1,4 @@
-import {sameOrigin} from '../lib/sheet-connection';
+import {sameOrigin,tooLarge} from '../lib/sheet-connection';
 import {botCookie,hasBotAccess,issueBotSession,passwordMatches} from '../lib/bot-access';
 import {attemptKey,attemptsAllowed,clearAttempts} from '../lib/admin-access';
 function page(unlocked=false,error='',status=200){
@@ -25,6 +25,7 @@ export async function GET(request:Request){
 }
 export async function POST(request:Request){
  if(!sameOrigin(request))return page(false,'This request is not allowed.',403);
+ if(tooLarge(request,1000))return page(false,'Request is too large.',413);
  try{
   const body=await request.text();if(body.length>1000)return page(false,'Request is too large.',400);
   const form=new URLSearchParams(body);
