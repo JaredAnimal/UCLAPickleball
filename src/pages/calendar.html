@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script>window.reservationsRequest=fetch('/api/reservations',{cache:'no-store'}).catch(()=>null)</script>
+<script>window.reservationsRequest=fetch('/api/reservations',{cache:'no-store',signal:AbortSignal.timeout?.(1e4)}).catch(()=>null)</script>
 <meta name="theme-color" content="#003b5c">
 <title>UCLA Club Pickleball</title>
 <link rel="icon" type="image/png" href="/favicon.png?v=__ASSET_VERSION__">
@@ -56,7 +56,7 @@
           <button type="button" class="filter" data-filter="mine" aria-pressed="false">My matches</button>
         </div>
       </div>
-      <div id="matches"></div>
+      <div id="matches"><div class="empty">Loading reservations…</div></div>
     </aside>
   </div>
 </main>
@@ -118,7 +118,7 @@
     </div>
   </form>
 </dialog>
-<div id="toast" role="status"></div>
+<div id="toast" role="status" popover="manual"></div>
 
 <script id="calendarConfig" type="application/json">__CALENDAR_CONFIG__</script>
 <script src="/pickleball-calendar.js?v=__ASSET_VERSION__" defer></script>

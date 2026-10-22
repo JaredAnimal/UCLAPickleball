@@ -9,6 +9,7 @@ declare namespace Cloudflare {
     SHEETS_ENCRYPTION_KEY: string;
     SHEETS_SPREADSHEET_ID: string;
     SHEET_TIMEOUT_MS?: string;
+    SHEET_DEADLINE_MS?: string;
   }
 }
 declare module '*.html' { const text: string; export default text; }

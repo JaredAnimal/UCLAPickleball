@@ -154,7 +154,7 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 
 | File | Purpose |
 | --- | --- |
-| `src/worker.ts` | HTTP routes and static asset serving |
+| `src/worker.ts` | HTTP routes, static asset serving, and the scheduled handler that refreshes the Sheet copy every minute |
 | `src/pages/calendar.html` | Calendar page and forms |
 | `public/pickleball-calendar.js` / `.css` | Calendar behavior and responsive styles |
 | `src/routes/` | Reservation, session, owner setup, and bot handlers |

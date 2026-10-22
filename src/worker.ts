@@ -6,6 +6,8 @@ import * as connectSheet from './routes/connect-sheet';
 import * as bot from './routes/bot';
 import * as botDownload from './routes/bot-download';
 import * as admin from './routes/admin';
+import {loadConnection} from './lib/sheet-connection';
+import {refreshCopy} from './lib/reservation-copy';
 
 type Handler = (request: Request) => Response | Promise<Response>;
 const routes: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = {
@@ -43,5 +45,8 @@ export default {
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     headers.set('X-Frame-Options', 'SAMEORIGIN');
     return new Response(request.method === 'HEAD' ? null : response.body, {status:response.status, statusText:response.statusText, headers});
+  },
+  scheduled(_controller: ScheduledController, _env: Cloudflare.Env, ctx: ExecutionContext) {
+    ctx.waitUntil(loadConnection().then(connection => connection && refreshCopy(connection)).catch(error => console.error('Scheduled refresh failed', error instanceof Error ? error.message : 'Unknown')));
   },
 } satisfies ExportedHandler<Cloudflare.Env>;
