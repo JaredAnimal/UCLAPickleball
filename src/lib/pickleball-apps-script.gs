@@ -90,7 +90,7 @@ function validate_(p,now,rosterSize){
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(p.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(p.end)||p.end<=p.start)throw new Error('End time must be after start time.');
  if(p.date+'T'+p.start<=now)throw new Error('Choose a future start time.');
  if(typeof p.court!=='string'||!p.court.trim()||p.court.length>100||typeof p.notes!=='string'||p.notes.length>500)throw new Error('Check the location and notes.');
- if(!Number.isInteger(p.capacity)||p.capacity<0||p.capacity>Math.max(0,rosterSize-1))throw new Error('Choose a valid number of additional players.');
+ if(!Number.isInteger(p.capacity)||p.capacity<0||p.capacity>Math.min(7,Math.max(0,rosterSize-1)))throw new Error('Choose up to 7 other players (8 on the court).');
  return {date:p.date,start:p.start,end:p.end,court:p.court.trim(),capacity:p.capacity,notes:p.notes.trim()};
 }
 function write_(sheet,row,m){

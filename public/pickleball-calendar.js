@@ -100,7 +100,7 @@ function render(){
  }
  if(!$('matches').children.length){const empty=document.createElement('div');empty.className='empty';empty.textContent=!loaded?'Loading reservations…':loadError?'Reservations are temporarily unavailable.':listFilter==='mine'?'You’re not in any matches this week.':'No open spots right now. Try next week or post a match.';$('matches').append(empty);}
 }
-function checkData(data){if(!data.court.trim())throw Error('Enter a court or location.');if(data.end<=data.start)throw Error('End time must be after start time on the same day.');if(started(data))throw Error('Choose a start time in the future.');if(!Number.isInteger(data.capacity)||data.capacity<0||data.capacity>ROSTER.length-1)throw Error('Choose a valid number of additional players.');}
+function checkData(data){if(!data.court.trim())throw Error('Enter a court or location.');if(data.end<=data.start)throw Error('End time must be after start time on the same day.');if(started(data))throw Error('Choose a start time in the future.');if(!Number.isInteger(data.capacity)||data.capacity<0||data.capacity>Math.min(7,ROSTER.length-1))throw Error('Choose up to 7 other players (8 on the court).');}
 function applyLocal(rows,action,payload,id){
  if(action==='join'&&String(payload.id||'').startsWith('practice-')&&isGuest(user))throw Error('Club practice is NOT open to guests.');
  let index=rows.findIndex(m=>m.id===payload.id),match=rows[index];
@@ -125,9 +125,9 @@ async function mutate(action,payload,applied){
  finally{setBusy(false);render();if(failed)loadReservations(true,true);}
 }
 async function signup(match,joining){if(await mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
-const capacityHint=()=>{$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`};
+const capacityHint=()=>{$('capacity').setCustomValidity(+$('capacity').value>7?'Choose up to 7 other players (8 on the court).':'');$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`+(+$('capacity').value>=7?' (up to 7 others, 8 on the court)':'')};
 function openEditor(match=null){
- if(!loaded||loadError||!requireUser())return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.max(0,ROSTER.length-1);$('notes').value=match?.notes??'';capacityHint();$('editor').showModal();
+ if(!loaded||loadError||!requireUser())return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER.length-1));$('notes').value=match?.notes??'';capacityHint();$('editor').showModal();
 }
 $('capacity').oninput=capacityHint;document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const c=$('capacity');c.value=Math.min(+c.max||42,Math.max(0,(+c.value||0)+ +b.dataset.step));capacityHint()});
 posts.forEach(b=>b.onclick=()=>openEditor());document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{listFilter=b.dataset.filter;render()});$('closeEditor').onclick=()=>{if(!busy)$('editor').close()};$('editor').addEventListener('cancel',event=>{if(busy)event.preventDefault()});
