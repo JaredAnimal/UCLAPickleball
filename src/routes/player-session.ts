@@ -2,11 +2,19 @@ import {json,sameOrigin,loadConnection,invokeSheet} from '../lib/sheet-connectio
 import {ROSTER} from '../lib/pickleball-config';
 import {readCopy,writeCopy} from '../lib/reservation-copy';
 import {canonicalPlayer,issuePlayerSession} from '../lib/player-session';
+import {readOnlyPreview,previewCalendar} from '../lib/preview-calendar';
 export async function POST(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
  try{
   const raw=await request.text();if(raw.length>1000)return json({error:'Invalid player name.'},400);
-  const p=JSON.parse(raw)??{},connection=await loadConnection();
+  const p=JSON.parse(raw)??{};
+  if(readOnlyPreview()){
+   const data=await previewCalendar(request),player=canonicalPlayer(p.player,data.roster);
+   if(!player)return json({error:'Choose a name from the club roster or continue as guest.'},403);
+   // Preview viewing needs no write credential; all reservation writes are rejected server-side.
+   return json({player,token:'preview-read-only',expires:Math.floor(Date.now()/1000)+8*60*60});
+  }
+  const connection=await loadConnection();
   let roster=ROSTER;if(connection){const copy=await readCopy();if(copy&&Date.now()-copy.savedAt<=300000)roster=copy.data.roster;else{const startedAt=Date.now(),data=await invokeSheet(connection,{action:'list'});await writeCopy(data,startedAt);roster=data.roster;}}
   const player=canonicalPlayer(p.player,roster);
   if(!player)return json({error:'Choose a name from the club roster or continue as guest.'},403);

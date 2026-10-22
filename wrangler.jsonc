@@ -39,5 +39,22 @@
       ],
       "fallthrough": true
     }
-  ]
+  ],
+  "previews": {
+    "vars": {
+      "PREVIEW_READ_ONLY": "true",
+      "PREVIEW_WORKER_NAME": "uclapickleball"
+    },
+    "version_metadata": {
+      "binding": "CF_VERSION_METADATA"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "ucla-club-pickleball-preview",
+        "database_id": "9f66e353-e518-4deb-8fb9-1586a6e2f2be",
+        "migrations_dir": "migrations"
+      }
+    ]
+  }
 }

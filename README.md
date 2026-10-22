@@ -158,3 +158,7 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 | `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
 | `migrations/` | D1 schema for settings (including the reservations copy) and owner login throttling |
+
+### Read-only branch previews
+
+Cloudflare Previews do not inherit production bindings. The `previews` configuration explicitly binds a separate D1 database and enables `PREVIEW_READ_ONLY`. Preview sign-in and the calendar use a short-lived copy of the live calendar's public GET API in that separate database. The Google Sheet connection, encryption key and production session secrets are never copied. Reservation changes are rejected on the server and disabled in the preview UI; the notice links to the live calendar for posting and joining. Production behavior is unchanged. The preview database creates its own copy table on first use. Keep the preview database separate from the production database.

@@ -2,12 +2,14 @@ import {json,sameOrigin,loadConnection,invokeSheet} from '../lib/sheet-connectio
 import {ROSTER} from '../lib/pickleball-config';
 import {sessionPlayer} from '../lib/player-session';
 import {readCopy,writeCopy} from '../lib/reservation-copy';
+import {readOnlyPreview,previewCalendar} from '../lib/preview-calendar';
 export async function GET(request:Request){
- try{const [connection,copy]=await Promise.all([loadConnection(),readCopy()]);if(!connection)return json({configured:false,roster:ROSTER,matches:[]});if(copy&&new URL(request.url).searchParams.get('fresh')!=='1')return json({...copy.data,configured:true,copyAge:Math.floor((Date.now()-copy.savedAt)/1000)});const startedAt=Date.now(),data=await invokeSheet(connection,{action:'list'});await writeCopy(data,startedAt);return json({...data,configured:true,copyAge:0});}
+ try{if(readOnlyPreview())return json({...await previewCalendar(request),configured:true});const [connection,copy]=await Promise.all([loadConnection(),readCopy()]);if(!connection)return json({configured:false,roster:ROSTER,matches:[]});if(copy&&new URL(request.url).searchParams.get('fresh')!=='1')return json({...copy.data,configured:true,copyAge:Math.floor((Date.now()-copy.savedAt)/1000)});const startedAt=Date.now(),data=await invokeSheet(connection,{action:'list'});await writeCopy(data,startedAt);return json({...data,configured:true,copyAge:0});}
  catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:error instanceof Error?error.message:'Could not load shared reservations.'},503);}
 }
 export async function POST(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
+ if(readOnlyPreview())return json({error:'This preview is read-only. Use the live calendar to change reservations.'},403);
  const player=await sessionPlayer(request);if(!player)return json({error:'Choose your player name before changing reservations.'},401);
  try{
  const raw=await request.text();if(raw.length>12000)return json({error:'Request is too large.'},400);const p=JSON.parse(raw)??{};

@@ -92,3 +92,31 @@ assert.equal((await publicCall('/api/player-session',{method:'POST',body:'null'}
 passed('null bodies and non-string times are rejected as bad requests');
 console.log(`${count} production API checks passed.`);
 }finally{await mf.dispose();}
+
+const previewSource={ok:true,apiVersion:2,configured:true,roster:['Alex Example','Blair Example'],matches:[]};
+let previewReads=0;
+const preview=new Miniflare({
+ modules:[{type:'ESModule',path:'dist/worker.js'},...files.filter(p=>p.endsWith('.zip')).map(p=>({type:'Data',path:'dist/'+p})),...files.filter(p=>p.endsWith('.html')||p.endsWith('.gs')).map(p=>({type:'Text',path:'dist/'+p}))],
+ modulesRoot:'dist',assets:{directory:'public',binding:'ASSETS',routerConfig:{invoke_user_worker_ahead_of_assets:true,has_user_worker:true}},
+ compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:{DB:'isolated-preview-tests'},
+ bindings:{PREVIEW_READ_ONLY:'true',PREVIEW_WORKER_NAME:'calendar'},cf:false,
+ outboundService:async request=>{assert.equal(request.method,'GET');assert.equal(request.url,'https://calendar.preview-account.workers.dev/api/reservations');previewReads++;return new MockResponse(JSON.stringify(previewSource),{headers:{'Content-Type':'application/json'}});}
+});
+try{
+ const previewCall=(path,options={})=>preview.dispatchFetch('https://branch-calendar.preview-account.workers.dev'+path,options);
+ let response=await previewCall('/api/reservations'),data=await response.json();
+ assert.equal(response.status,200);assert.equal(data.readOnly,true);assert.equal(data.configured,true);assert.deepEqual(data.roster,previewSource.roster);
+ assert.equal(data.liveUrl,'https://calendar.preview-account.workers.dev/');
+ // No production DB, Google connection, or session secrets are supplied.
+ response=await previewCall('/api/player-session',{method:'POST',body:JSON.stringify({player:'Alex Example'})});
+ assert.equal(response.status,200);const member=await response.json();assert.equal(member.player,'Alex Example');
+ response=await previewCall('/api/player-session',{method:'POST',body:JSON.stringify({player:'Jamie Visitor [guest]'})});assert.equal(response.status,200);
+ response=await previewCall('/api/player-session',{method:'POST',body:JSON.stringify({player:'Unknown Member'})});assert.equal(response.status,403);
+ for(const authorization of [undefined,'Bearer '+member.token]){
+  response=await previewCall('/api/reservations',{method:'POST',headers:authorization?{Authorization:authorization}:{},body:JSON.stringify({action:'join',player:'Alex Example'})});
+  assert.equal(response.status,403);assert.match(await response.text(),/read-only/);
+ }
+ response=await previewCall('/api/reservations?fresh=1');assert.equal(response.status,200);assert.equal(previewReads,1);
+ const db=await preview.getD1Database('DB');assert.equal((await db.prepare('SELECT key FROM app_settings').all()).results.length,1);
+ console.log('PASS preview login, isolated storage, public GET-only source, caching, and server-side write rejection');
+}finally{await preview.dispose();}
