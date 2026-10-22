@@ -56,7 +56,7 @@
           <button type="button" class="filter" data-filter="mine" aria-pressed="false">My matches</button>
         </div>
       </div>
-      <div id="matches"></div>
+      <div id="matches"><div class="empty">Loading reservations…</div></div>
     </aside>
   </div>
 </main>
@@ -118,7 +118,7 @@
     </div>
   </form>
 </dialog>
-<div id="toast" role="status"></div>
+<div id="toast" role="status" popover="manual"></div>
 
 <script id="calendarConfig" type="application/json">__CALENDAR_CONFIG__</script>
 <script src="/pickleball-calendar.js?v=__ASSET_VERSION__" defer></script>
