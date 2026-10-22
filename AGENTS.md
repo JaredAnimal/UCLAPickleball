@@ -14,7 +14,7 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 ## Preserve these club rules
 
 - Calendar shows today plus five days in advance, using Pacific civil dates and correct daylight-saving transitions.
-- Reservations default to Sunset Rec; the court remains editable.
+- Reservations default to Sunset Rec; the court remains editable. They allow up to 7 other players (8 on a court with the host); the Worker and the Google bridge enforce it.
 - Thursday practice is 5–7 PM; Sunday practice is 3–5 PM; member attendance is unlimited; guests cannot join practices.
 - Player selection is intentionally an honor system. First and last names are required for guests, displayed with a red `[guest]` marker.
 - Only a reservation's selected host may edit, cancel, or remove attendees. Enforce this in the Google bridge as well as the UI.

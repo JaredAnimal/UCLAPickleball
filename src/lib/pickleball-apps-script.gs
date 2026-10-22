@@ -30,12 +30,12 @@ function doPost(event){
   const raw=event&&event.postData&&event.postData.contents;if(!raw||raw.length>15000)throw new Error('Invalid request.');
   const p=JSON.parse(raw),props=PropertiesService.getScriptProperties(),secret=props.getProperty('API_SECRET');
   if(!secret||!equal_(String(p.secret||''),secret))throw new Error('Connection secret is incorrect.');
+  if(p.action!=='list'){lock=LockService.getScriptLock();if(!lock.tryLock(10000))throw new Error('Another player is updating the calendar. Try again.');}
   const sheetId=spreadsheetId_(),ss=SpreadsheetApp.openById(sheetId),sheet=ss.getSheetByName('Reservations'),rosterSheet=ss.getSheetByName('Roster');
   if(!sheet||!rosterSheet)throw new Error('Reservations or Roster tab is missing.');
   checkHeaders_(sheet.getRange(1,1,1,COLUMNS.length).getDisplayValues()[0]);
   const rosterRows=rosterSheet.getLastRow()-1,roster=rosterRows>0?rosterSheet.getRange(2,1,rosterRows,1).getDisplayValues().map(r=>r[0].trim()).filter(Boolean):[];
   if(p.action==='list')return reply_({ok:true,sheetId:sheetId,matches:read_(sheet),roster:roster});
-  lock=LockService.getScriptLock();if(!lock.tryLock(10000))throw new Error('Another player is updating the calendar. Try again.');
   let matches=read_(sheet);const done=()=>reply_({ok:true,sheetId:sheetId,matches:matches,roster:roster});
   if(!roster.includes(p.player)&&!guest_(p.player))throw new Error('Choose a club player or enter a guest name.');
   if(!['create','edit','join','leave','cancel','remove'].includes(p.action)||typeof p.requestId!=='string'||!/^[a-zA-Z0-9_-]{16,100}$/.test(p.requestId))throw new Error('Invalid action.');
@@ -90,7 +90,7 @@ function validate_(p,now,rosterSize){
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(p.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(p.end)||p.end<=p.start)throw new Error('End time must be after start time.');
  if(p.date+'T'+p.start<=now)throw new Error('Choose a future start time.');
  if(typeof p.court!=='string'||!p.court.trim()||p.court.length>100||typeof p.notes!=='string'||p.notes.length>500)throw new Error('Check the location and notes.');
- if(!Number.isInteger(p.capacity)||p.capacity<0||p.capacity>Math.max(0,rosterSize-1))throw new Error('Choose a valid number of additional players.');
+ if(!Number.isInteger(p.capacity)||p.capacity<0||p.capacity>Math.min(7,Math.max(0,rosterSize-1)))throw new Error('Choose up to 7 other players (8 on the court).');
  return {date:p.date,start:p.start,end:p.end,court:p.court.trim(),capacity:p.capacity,notes:p.notes.trim()};
 }
 function write_(sheet,row,m){
