@@ -68,7 +68,14 @@ input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:0;border
 .remove-player{margin-left:auto;padding:6px 12px;font-size:13px}
 .panel{min-width:0;background:var(--surface);border-radius:20px;box-shadow:var(--shadow)}
 .bot-page{max-width:650px}.bot-panel{padding:28px}.bot-panel h2{margin-top:0}.bot-panel p{line-height:1.6}.bot-form button{margin-top:18px}
-.bot-status{margin:24px 0 0;padding:22px;border:1px dashed var(--line-strong);border-radius:14px;background:var(--bg)}.bot-status h3{margin-top:0}
+.bot-status{margin:24px 0 0;padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--blue-wash)}
+.bot-download{display:flex;align-items:center;gap:16px;width:100%;padding:18px 20px;border-radius:13px;text-align:left;box-shadow:0 5px 14px #2774ae26}
+.bot-download>svg{width:26px;height:26px;flex:0 0 auto}
+.bot-download-label{display:grid;gap:4px;min-width:0;flex:1;font-size:18px;line-height:1.25}
+.bot-download-meta{font-size:12px;font-weight:500;opacity:.85}
+.bot-download-badge{flex:0 0 auto;padding:6px 9px;border:1px solid #ffffff40;border-radius:7px;background:#ffffff14;font-size:12px;letter-spacing:.04em}
+.bot-panel .bot-disclaimer{margin:14px 0 0;color:var(--muted);font-size:13px;line-height:1.5;text-align:center}
+@media(max-width:540px){.bot-status{padding:16px}.bot-download{padding:16px;gap:12px}.bot-download-label{font-size:16px}.bot-download-badge{display:none}}
 .bot-footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:24px}.bot-footer a{color:var(--blue-ink);padding:10px 0;min-height:44px;display:inline-flex;align-items:center}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}}@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}}@keyframes fade{from{opacity:0}}@keyframes sheet{from{transform:translateY(100%)}}@keyframes spin{to{transform:rotate(360deg)}}
 /* Phones keep :hover after a tap, which would make the last tapped button look selected. */

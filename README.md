@@ -9,10 +9,16 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 - Reservations default to Sunset Rec; hosts choose additional slots and manage attendees.
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
 - Shared reservations through the existing private Google Sheet and Apps Script bridge.
-- Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. The actual download remains a placeholder.
+- Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. The Windows ZIP download is served only after unlocking the page.
 - Separate password-protected owner settings, encrypted connection storage, signed player sessions, and automated checks.
 
 The calendar deliberately uses the club's honor system for player names. Selecting a roster name is not proof of a person's identity. Owner settings use a separate server password.
+
+## Update the automation bot ZIP
+
+In GitHub, open `downloads/`, choose **Add file → Upload files**, and upload your ZIP named exactly **Picklebot-Windows.zip**, replacing the existing file. Commit it to a branch and merge its pull request to publish through the existing Cloudflare build connection. No code edits are needed for later ZIP replacements.
+
+The password-protected bot page serves the ZIP through `/bot/download`. Its download button shows the disclaimer “Windows only. Read README for instructions.” directly underneath. Keep the ZIP out of `public/` so it stays behind the existing password gate.
 
 ## Moving from the current site
 

@@ -4,6 +4,7 @@ import * as playerSession from './routes/player-session';
 import * as sheetsConnection from './routes/sheets-connection';
 import * as connectSheet from './routes/connect-sheet';
 import * as bot from './routes/bot';
+import * as botDownload from './routes/bot-download';
 import * as admin from './routes/admin';
 
 type Handler = (request: Request) => Response | Promise<Response>;
@@ -14,6 +15,7 @@ const routes: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = {
   '/api/sheets-connection': sheetsConnection,
   '/connect-sheet': connectSheet,
   '/bot': bot,
+  '/bot/download': botDownload,
   '/admin': admin,
 };
 

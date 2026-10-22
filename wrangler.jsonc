@@ -26,6 +26,13 @@
   ],
   "rules": [
     {
+      "type": "Data",
+      "globs": [
+        "**/*.zip"
+      ],
+      "fallthrough": true
+    },
+    {
       "type": "Text",
       "globs": [
         "**/*.gs"
