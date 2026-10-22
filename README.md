@@ -156,4 +156,4 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 | `src/lib/admin-access.ts` | Owner password sessions and login throttling |
 | `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
-| `migrations/` | D1 schema for settings and owner login throttling |
+| `migrations/` | D1 schema for settings (including the short-lived reservations copy) and owner login throttling |

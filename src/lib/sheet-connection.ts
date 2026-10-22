@@ -1,6 +1,7 @@
 import {env} from 'cloudflare:workers';
 import {database} from './database';
 import {expectedSheetId} from './pickleball-config';
+import {clearCopy} from './reservation-copy';
 export type SheetConnection={endpoint:string;secret:string};
 export const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private, no-store'}});
 export function sameOrigin(request:Request){const o=request.headers.get('origin');return request.headers.get('sec-fetch-site')!=='cross-site'&&(!o||o===new URL(request.url).origin);}
@@ -11,7 +12,7 @@ async function key(){const raw=env.SHEETS_ENCRYPTION_KEY;if(!raw)throw new Error
 async function seal(value:string){const iv=crypto.getRandomValues(new Uint8Array(12));const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},await key(),new TextEncoder().encode(value));return base64(iv)+'.'+base64(new Uint8Array(cipher));}
 async function unseal(value:string){const [iv,cipher]=value.split('.');return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unbase64(iv)},await key(),unbase64(cipher)));}
 export async function loadConnection():Promise<SheetConnection|null>{const row=await database().prepare('SELECT value FROM app_settings WHERE key = ?').bind('google_sheets').first<{value:string}>();if(!row)return null;const config=JSON.parse(row.value);if(!endpointValid(config.endpoint))throw new Error('Invalid saved connection.');return {endpoint:config.endpoint,secret:await unseal(config.secret)};}
-export async function saveConnection(connection:SheetConnection){const data=JSON.stringify({endpoint:connection.endpoint,secret:await seal(connection.secret)});await database().prepare('INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('google_sheets',data).run();}
+export async function saveConnection(connection:SheetConnection){const data=JSON.stringify({endpoint:connection.endpoint,secret:await seal(connection.secret)});await database().prepare('INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('google_sheets',data).run();await clearCopy();}
 export type Reservation={id:string;date:string;start:string;end:string;court:string;capacity:number|null;kind?:'practice';host:string;players:string[];notes:string;version:number};
 export type SheetResult={ok:true;apiVersion:2;matches:Reservation[];roster:string[]};
 const SLOW='Google Sheets took too long to respond. Refresh to check whether your change saved.';
