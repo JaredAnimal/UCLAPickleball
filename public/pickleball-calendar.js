@@ -1,6 +1,6 @@
 const CONFIG=JSON.parse(document.getElementById('calendarConfig').textContent);
 let ROSTER=CONFIG.roster;
-const $=id=>document.getElementById(id),USER_KEY='ucla-pickleball-user-v1',PENDING_KEY='ucla-pickleball-pending-v1',TOKEN_KEY='ucla-pickleball-session-v1';
+const $=id=>document.getElementById(id),USER_KEY='ucla-pickleball-user-v1',PENDING_KEY='ucla-pickleball-pending-v1',TOKEN_KEY='ucla-pickleball-session-v1',CACHE_KEY='pickleball-reservations-v1';
 const norm=s=>s.trim().replace(/\s+/g,' ').toLowerCase();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const guestSuffix=' [guest]';
@@ -19,21 +19,22 @@ const isPractice=m=>m.kind==='practice';
 const started=m=>`${m.date}T${isPractice(m)?m.end:m.start}`<=clubNow();
 function practiceForDate(date){const weekday=dateObj(date).getUTCDay(),start=weekday===4?'17:00':weekday===0?'15:00':null;if(!start)return null;return {id:'practice-'+date,kind:'practice',date,start,end:weekday===4?'19:00':'17:00',court:'Club practice',capacity:null,host:'Club practice',players:[],notes:'Weekly club practice. NOT open to guests.',version:1};}
 function matchesForDate(date,rows){const practice=practiceForDate(date),regular=rows.filter(m=>m.date===date&&!m.id.startsWith('practice-'));if(practice){const saved=rows.find(m=>m.id===practice.id);regular.push({...practice,players:saved?.players||[],version:saved?.version||1});}return regular.sort((a,b)=>a.start.localeCompare(b.start));}
-let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,busy=false,loadError='',matches=[],lastToday=localToday();
+let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,busy=false,fromDevice=false,loadError='',matches=[],lastToday=localToday();
 try{user=localStorage.getItem(USER_KEY)||''}catch{}
 try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
 const problem=(error,fallback)=>error instanceof TypeError?'Network problem. Check your connection and try again.':error?.message||fallback;
 function toast(message,ms=5000){$('toast').textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').textContent='',ms);}
 const posts=document.querySelectorAll('.post');
-function setBusy(value){busy=value;posts.forEach(b=>b.disabled=value||!loaded||!!loadError);$('refresh').disabled=value||loading;const submit=$('matchForm').querySelector('button.primary');submit.disabled=value;submit.textContent=value?'Saving…':'Save reservation';}
+function setBusy(value){busy=value;posts.forEach(b=>b.disabled=value||!loaded||!!loadError||fromDevice);$('refresh').disabled=value||loading||fromDevice;const submit=$('matchForm').querySelector('button.primary');submit.disabled=value;submit.textContent=value?'Saving…':'Save reservation';}
+const saveCopy=(m,r)=>{try{localStorage.setItem(CACHE_KEY,JSON.stringify({savedAt:Date.now(),matches:m,roster:r}))}catch{}};
 function showNotice(){
  const notice=$('syncNotice'),text=loadError&&loadError+(loaded?' Displaying the last loaded reservations. Saving is paused.':' Reservations could not be loaded.');if(notice.dataset.text===text)return;notice.dataset.text=text;notice.hidden=!text;notice.textContent=text;
  if(text){const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>loadReservations();notice.append(retry);}
 }
-async function loadReservations(silent=false){
- if(loading||busy)return;loading=true;const saves=saveCount;$('refresh').disabled=true;
- try{const response=await fetch('/api/reservations',{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy&&saves===saveCount)matches=configured?data.matches:[];const fresh=editing&&$('editor').open&&matches.find(m=>m.id===editing.id);if(fresh&&['date','start','end','court','capacity','notes'].every(k=>fresh[k]===editing[k]))editingVersion=fresh.version;loaded=true;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
- catch(error){loadError=problem(error,'Could not load reservations.');render();if(!silent)toast(loadError);}
+async function loadReservations(silent=false,fresh=false){
+ if(loading||busy)return;loading=true;const saves=saveCount,early=window.reservationsRequest;window.reservationsRequest=null;$('refresh').disabled=true;
+ try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store'});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!busy&&saves===saveCount)matches=configured?data.matches:[];const fresh=editing&&$('editor').open&&matches.find(m=>m.id===editing.id);if(fresh&&['date','start','end','court','capacity','notes'].every(k=>fresh[k]===editing[k]))editingVersion=fresh.version;loaded=true;fromDevice=false;if(configured)saveCopy(data.matches,ROSTER);loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}render();if(configured&&user)ensurePlayerSession(user).catch(()=>{});}
+ catch(error){fromDevice=false;loadError=problem(error,'Could not load reservations.');render();if(!silent)toast(loadError);}
  finally{loading=false;setBusy(busy);}
 }
 function requireUser(){if(user)return true;openLogin();return false;}
@@ -82,12 +83,12 @@ function render(){
   const key=addDays(windowStart,d),daily=loaded&&!loadError?matchesForDate(key,matches).filter(keep):[];
   if(!daily.length&&(listFilter!=='all'||!loaded||loadError))continue;
   const head=document.createElement('h4');head.className='grouphead';head.id='g-'+key;head.textContent=(key===localToday()?'Today · ':'')+dayLabel(key,{weekday:'short',month:'short',day:'numeric'});$('matches').append(head);
-  if(!daily.length){const none=document.createElement('p'),post=document.createElement('button');none.className='none';none.textContent='No matches yet. ';post.className='link';post.textContent='Post one';post.disabled=busy;post.onclick=()=>{selected=key;openEditor()};none.append(post);$('matches').append(none);continue;}
+  if(!daily.length){const none=document.createElement('p'),post=document.createElement('button');none.className='none';none.textContent='No matches yet. ';post.className='link';post.textContent='Post one';post.disabled=busy||fromDevice;post.onclick=()=>{selected=key;openEditor()};none.append(post);$('matches').append(none);continue;}
   daily.forEach(m=>{
    const i=shown++,practice=isPractice(m),own=!practice&&m.host===user,joined=m.players.includes(user),available=practice?Infinity:m.capacity-m.players.length,past=started(m);const card=document.createElement('article');card.className=fresh?'card enter':'card';card.style.setProperty('--i',i);
    card.innerHTML=`<h4>${esc(timeLabel(m.start))} – ${esc(timeLabel(m.end))}</h4><div class="muted small">${esc(m.court)}</div><div class="count${available<=0?' full':''}">${spots(m,12)}<strong>${practice?`${m.players.length} going`:`${m.players.length+1} / ${m.capacity+1} players`}</strong><span class="badge ${available<=0||past?'full':''}">${past?(practice?'Ended':'Started / past'):practice?'Unlimited signups':available>0?`${available} spot${available===1?'':'s'} open`:'Full'}</span></div><ul class="players">${practice?'':`<li>${av(m.host)}${playerHtml(m.host)} <strong>· Host</strong></li>`}${m.players.map(player=>`<li>${av(player)}${playerHtml(player)}</li>`).join('')}</ul>${m.notes?`<p class="muted small" style="white-space:pre-wrap">${esc(m.notes)}</p>`:''}`;
    if(own){card.querySelectorAll('.players li').forEach((item,index)=>{if(index===0)return;const player=m.players[index-1],button=document.createElement('button');button.className='remove-player danger';button.textContent='Remove';button.setAttribute('aria-label','Remove '+playerName(player));button.disabled=busy||!!loadError||!loaded;button.onclick=async()=>{if(confirm('Remove '+playerName(player)+' from this match?'))if(await mutate('remove',{id:m.id,target:player}))toast(playerName(player)+' removed from the match.');};item.append(button);});}
-   const actions=document.createElement('div');actions.className='actions';const add=(label,fn,style='',disabled=false)=>{const button=document.createElement('button');button.textContent=label;button.className=style;button.disabled=disabled||busy||!!loadError||!loaded;button.onclick=fn;actions.append(button)};
+   const actions=document.createElement('div');actions.className='actions';const add=(label,fn,style='',disabled=false)=>{const button=document.createElement('button');button.textContent=label;button.className=style;button.disabled=disabled||busy||fromDevice||!!loadError||!loaded;button.onclick=fn;actions.append(button)};
    if(own){add('Edit',()=>openEditor(m),'',past);add('Cancel match',async()=>{if(confirm('Cancel this reservation for everyone?')&&await mutate('cancel',{id:m.id}))toast('Reservation canceled.')},'danger');}
    else if(joined)add(practice?'Leave practice':'Leave match',()=>signup(m,false),'',past);
    else if(practice&&isGuest(user))add('Members only',()=>{},'',true);
@@ -112,11 +113,11 @@ function applyLocal(rows,action,payload,id){
  if(action==='leave')match.players=match.players.filter(name=>name!==user);match.version=(match.version||1)+1;
 }
 async function mutate(action,payload,applied){
- if(loadError&&!busy){toast(loadError);$('matchError').textContent=loadError;loadReservations(true);}if(busy||!loaded||loadError||!requireUser())return false;setBusy(true);let before=null,failed=false;
+ if(loadError&&!busy){toast(loadError);$('matchError').textContent=loadError;loadReservations(true);}if(busy||fromDevice||!loaded||loadError||!requireUser())return false;setBusy(true);let before=null,failed=false;
  try{
   const signature=JSON.stringify({action,player:user,...payload});let pending;try{pending=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
   const requestId=pending?.signature===signature&&['create','edit'].includes(action)?pending.requestId:crypto.randomUUID();try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
-  const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();toast('Saving…',6e4);const send=async()=>fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await ensurePlayerSession(user)},body:JSON.stringify({action,player:user,requestId,...payload})});let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const data=await response.json().catch(()=>({}));if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;saveCount++;
+  const draft=JSON.parse(JSON.stringify(matches));applyLocal(draft,action,payload,requestId);before=matches;matches=draft;applied?.();render();toast('Saving…',6e4);const send=async()=>fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await ensurePlayerSession(user)},body:JSON.stringify({action,player:user,requestId,...payload})});let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const data=await response.json().catch(()=>({}));if(!response.ok||data.ok!==true)throw Error(data.error||'Google Sheets did not confirm the update. Refresh before retrying.');matches=data.matches;ROSTER=data.roster;saveCount++;saveCopy(matches,ROSTER);
   try{sessionStorage.removeItem(PENDING_KEY)}catch{}return true;
  }catch(error){if(before)matches=before;failed=true;const message=problem(error,'Could not confirm the update. Refresh before retrying.');toast(message);$('matchError').textContent=message;return false;}
  finally{setBusy(false);render();if(failed)loadReservations(true);}
@@ -133,4 +134,5 @@ function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowS
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>loadReservations();
 const autoRefresh=()=>{if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};window.addEventListener('focus',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);
 setInterval(()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}autoRefresh();},30000);
-render();void loadReservations();if(!user)openLogin();
+try{const c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(Array.isArray(c?.matches)&&Array.isArray(c.roster)&&Date.now()-c.savedAt<7*864e5){matches=c.matches;ROSTER=c.roster;configured=loaded=fromDevice=true}}catch{}
+render();setBusy(false);void loadReservations();if(!user)openLogin();
