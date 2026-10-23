@@ -65,7 +65,7 @@ input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:0;border
 [hidden]{display:none!important}
 .bot-nav{display:inline-flex;gap:8px;align-items:center;white-space:nowrap}.nav-button{min-height:44px;justify-content:center;color:var(--ink);background:var(--surface);border:1px solid var(--line-strong);border-radius:12px;padding:10px 14px;text-decoration:none;font-size:14px;font-weight:600;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;transition:transform .12s var(--ease),background-color .15s,border-color .15s}.nav-button:active{transform:scale(.97)}
 .beta-label{color:var(--blue);font-size:13px;font-weight:800}
-.guest-tag{color:var(--danger);font-size:12px;font-weight:750;white-space:nowrap}.guest-toggle{display:block;margin:16px auto 0;border-color:var(--blue);color:var(--blue-ink)}
+.guest-tag{color:var(--danger);font-size:12px;font-weight:750;white-space:nowrap}
 .remove-player{margin-left:auto;padding:6px 12px;font-size:13px}
 .panel{min-width:0;background:var(--surface);border-radius:20px;box-shadow:var(--shadow)}
 .bot-page{max-width:650px}.bot-panel{padding:28px}.bot-panel h2{margin-top:0}.bot-panel p{line-height:1.6}.bot-form button{margin-top:18px}
@@ -102,7 +102,7 @@ main.login{max-width:440px}.login-card{padding:24px;animation:rise .32s var(--ea
  main{padding:20px 16px calc(24px + env(safe-area-inset-bottom))}.topline{margin-bottom:2px}.times{grid-template-columns:minmax(0,1fr);gap:0}
  .calendar{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.day{min-height:120px;padding:10px;border-radius:14px}.chip{padding:8px 9px}
  .toolbar h3{font-size:16px}.nav{gap:4px}.nav button{padding:0 12px}
- dialog{padding:22px 18px}#editor,#confirm{margin:auto 0 0;width:100%;max-width:100%;max-height:calc(100dvh - 12px);border-radius:22px 22px 0 0;padding:22px 16px 0;touch-action:pan-y}#editor[open],#confirm[open]{animation:sheet .34s var(--ease)}#confirm .modalactions,#editor .modalactions{padding-bottom:calc(14px + env(safe-area-inset-bottom))}.modalactions button{flex:1}.modalactions .primary{flex:2}.guest-toggle{width:100%}.bot-panel{padding:22px}.actions button{flex:1}
+ dialog{padding:22px 18px}#editor,#confirm{margin:auto 0 0;width:100%;max-width:100%;max-height:calc(100dvh - 12px);border-radius:22px 22px 0 0;padding:22px 16px 0;touch-action:pan-y}#editor[open],#confirm[open]{animation:sheet .34s var(--ease)}#confirm .modalactions,#editor .modalactions{padding-bottom:calc(14px + env(safe-area-inset-bottom))}.modalactions button{flex:1}.modalactions .primary{flex:2}.bot-panel{padding:22px}.actions button{flex:1}
 }
 @media(max-width:380px){.row{grid-template-columns:minmax(0,1fr);gap:0}h1{font-size:17px}}
 /* Keep .sidehead on one line on small phones and in the 340px side column. */

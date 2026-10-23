@@ -1,7 +1,6 @@
 const CONFIG=JSON.parse(document.getElementById('calendarConfig').textContent);
 let ROSTER=CONFIG.roster;
 const $=id=>document.getElementById(id),PENDING_KEY='ucla-pickleball-pending-v1',CACHE_KEY='pickleball-reservations-v1';
-const norm=s=>s.trim().replace(/\s+/g,' ').toLowerCase();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const guestSuffix=' [guest]';
 const isGuest=name=>typeof name==='string'&&name.endsWith(guestSuffix)&&name.length<=109&&name.slice(0,-guestSuffix.length).trim().split(/\s+/).length>=2&&!/[\[\]\p{C}]/u.test(name.slice(0,-guestSuffix.length));
@@ -49,7 +48,7 @@ const initials=name=>playerName(name).trim().split(/\s+/).map(w=>w[0]).join('').
 const av=name=>`<span class="av${name===user?' me':''}" aria-hidden="true">${esc(initials(name))}</span>`;
 function render(){
  const sig=JSON.stringify([matches,pending.map(o=>o.requestId),loadError,fromDevice,loaded,user,listFilter,windowStart,selected,clubNow()]);if(sig===render.sig)return;render.sig=sig;const focused=document.activeElement?.dataset?.k;
- $('identity').innerHTML=user?playerHtml(user):'Choose your player';$('initials').textContent=user?initials(user):'';$('profile').setAttribute('aria-label',user?'Profile: '+playerName(user):'Profile');$('monthTitle').textContent=displayRange();document.querySelectorAll('[data-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.filter===listFilter)));posts.forEach(b=>b.disabled=!loaded||!!loadError||fromDevice);showNotice();
+ $('identity').innerHTML=playerHtml(user);$('initials').textContent=initials(user);$('profile').setAttribute('aria-label','Profile: '+playerName(user));$('monthTitle').textContent=displayRange();document.querySelectorAll('[data-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.filter===listFilter)));posts.forEach(b=>b.disabled=!loaded||!!loadError||fromDevice);showNotice();
  $('calendar').innerHTML='';
  for(let i=0;i<6;i++){
   const key=addDays(windowStart,i),today=key===localToday(),dayMatches=matchesForDate(key,matches).filter(live);
@@ -109,19 +108,18 @@ async function verifySave(action,payload,id,who){
 const settle=()=>{if(!pending.length&&resync&&!loading){resync=false;loadReservations(true,true);}};
 // ponytail: one save in flight at a time; queued-but-unsent ops are lost if the page closes while an earlier op is in flight (~2 s normally, up to ~80 s when Google stalls: two 25 s POSTs plus the 30 s verify). Persist the queue in sessionStorage if that bites.
 async function run(op){
- const {action,payload,requestId,who}=op;let data=null,text='',failed=false,sent=false;
- const send=async()=>{sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json'},body:JSON.stringify({action,player:who,requestId,...payload})})};
- const save=async()=>{const response=await send();if(response.status===401){signedOut();throw Object.assign(Error('Your session ended. Sign in again.'),{server:true,status:401});}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,busy:d?.busy===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
+ const {action,payload,requestId,who}=op;let data=null,text='',failed=false;
+ const save=async()=>{const response=await fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json'},body:JSON.stringify({action,player:who,requestId,...payload})});if(response.status===401){signedOut();throw Object.assign(Error('Your session ended. Sign in again.'),{server:true,status:401});}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,busy:d?.busy===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
  try{data=await save();}
  catch(error){
-  const doubt=x=>sent&&(x.uncertain||!x.server&&navigator.onLine!==false);let e=error,unsure=doubt(e);
+  const doubt=x=>x.uncertain||!x.server&&navigator.onLine!==false;let e=error,unsure=doubt(e);
   // The script keeps a receipt per requestId, so the identical re-send returns the first result. Only a rule rejection (409) proves nothing landed; a busy lock says nothing about a first send that may have landed, but a busy first send proves nothing applied, so it gets the same single re-send.
   if(unsure||e.busy&&e.status===409){const was=unsure;await new Promise(r=>setTimeout(r,1500));try{data=await save();unsure=false;}catch(again){e=again;unsure=again.status===409&&!again.busy?false:was||doubt(again);}}
   if(unsure){const check=await verifySave(action,payload,requestId,who);data=check.data||null;if(check.state==='absent'){text='That didn’t save. Try again.';failed=true;}if(check.state==='unknown'){text='Couldn’t confirm the save yet. The list will update when Google responds.';confirmed=viewOf(confirmed,[op]);}}
   else if(!data){text=problem(e,'Could not confirm the update. Refresh before retrying.');failed=true;data=e.data||null;if(!data)resync=true;}
  }
  pending.splice(pending.indexOf(op),1);saveCount++;if(data){lastWrite=Date.now();loadError='';confirmed=data.matches;ROSTER=data.roster||ROSTER;saveCopy(confirmed,ROSTER);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
- setView();if(text)(failed&&!/changed/.test(text)&&op.reopen||toast)(text);settle();
+ setView();if(text&&!gone)(failed&&!/changed/.test(text)&&op.reopen||toast)(text);settle();
 }
 function mutate(action,payload,applied,reopen){
  if(loadError){$('matchError').textContent=loadError;toast(loadError);loadReservations(true);}if(fromDevice||!loaded||loadError)return false;if(Date.now()-lastOp<400)return false;

@@ -2,11 +2,12 @@
 const CONFIG=JSON.parse(document.getElementById('loginConfig').textContent),$=id=>document.getElementById(id),card=$('card');
 // A new account must never see the last one's reservations.
 try{localStorage.removeItem('pickleball-reservations-v1')}catch{}
-const IN_APP=/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Messenger|Threads|musical_ly|BytedanceWebview|TikTok|Snapchat|LinkedInApp|Twitter|Line\//i;
+// "Messenger" also catches WeChat (MicroMessenger); "; wv)" marks an Android WebView (Chrome Custom Tabs lack it).
+const IN_APP=/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Messenger|Threads|musical_ly|BytedanceWebview|TikTok|Snapchat|LinkedInApp|Twitter|Line\/|; wv\)/i;
 if(CONFIG.stage==='name'){
  let tab;
  const say=(text,fix=false)=>{$('nameError').textContent=text;$('fix').hidden=!fix};
- const pick=t=>{tab=t;card.dataset.tab=t;$('clubTab').setAttribute('aria-pressed',t==='club');$('guestTab').setAttribute('aria-pressed',t==='guest');$('clubNote').hidden=t!=='club';$('guestNote').hidden=t==='club';say('')};
+ const pick=t=>{if($('submit').disabled)return;tab=t;card.dataset.tab=t;$('clubTab').setAttribute('aria-pressed',t==='club');$('guestTab').setAttribute('aria-pressed',t==='guest');$('clubNote').hidden=t!=='club';$('guestNote').hidden=t==='club';say('')};
  $('email').textContent=CONFIG.email;$('first').value=CONFIG.first;$('last').value=CONFIG.last;pick(CONFIG.tab);if(CONFIG.error)say(CONFIG.error);
  $('clubTab').onclick=()=>pick('club');$('guestTab').onclick=()=>pick('guest');
  $('toGuest').onclick=()=>{pick('guest');$('guestTab').focus()};
@@ -15,7 +16,7 @@ if(CONFIG.stage==='name'){
   e.preventDefault();const button=$('submit');if(button.disabled)return;
   button.disabled=true;button.textContent='Signing in…';say('');
   try{
-   const r=await fetch('/auth/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tab,first:$('first').value,last:$('last').value})}),d=await r.json().catch(()=>null);
+   const r=await fetch('/auth/name',{method:'POST',signal:AbortSignal.timeout?.(3e4),headers:{'Content-Type':'application/json'},body:JSON.stringify({tab,first:$('first').value,last:$('last').value})}),d=await r.json().catch(()=>null);
    if(r.ok&&d?.ok)return location.assign('/');
    if(d?.code==='signin')return location.reload();say(d?.error||"Couldn't sign in right now. Try again.",d?.code==='roster-name');
   }catch{say('Network problem. Check your connection and try again.')}

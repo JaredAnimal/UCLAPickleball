@@ -6,8 +6,8 @@ document.getElementById('connect').onsubmit=async event=>{event.preventDefault()
 const mErr=document.getElementById('members-error'),when=s=>new Date(s*1000).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const el=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 async function act(action,sub){mErr.textContent='';try{const r=await fetch('/api/members',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,sub})});if(!r.ok)throw Error((await r.json()).error);}catch(e){mErr.textContent=e.message;}loadMembers();}
-// Two-tap confirm: the first tap turns the button into its confirm label for 4 s.
-function arm(label,confirm,run){const b=el('button',label);b.type='button';let t;b.onclick=()=>{if(t){clearTimeout(t);t=0;b.disabled=true;run();return;}b.textContent=confirm;t=setTimeout(()=>{t=0;b.textContent=label;},4000);};return b;}
+// Two-tap confirm: the first tap turns the button into its confirm label for 4 s; a second tap within 400 ms (a double-click) is ignored.
+function arm(label,confirm,run){const b=el('button',label);b.type='button';let t,at;b.onclick=()=>{if(t){if(Date.now()-at<400)return;clearTimeout(t);t=0;b.disabled=true;run();return;}at=Date.now();b.textContent=confirm;t=setTimeout(()=>{t=0;b.textContent=label;},4000);};return b;}
 function row(list,main,sub,...buttons){const li=el('li'),box=el('span',main);if(sub)box.append(el('br'),el('small',sub));li.append(box,...buttons);list.append(li);}
 async function loadMembers(){
  const roster=document.getElementById('roster'),guests=document.getElementById('guests'),blocked=document.getElementById('blocked'),count=document.getElementById('count');
@@ -22,6 +22,6 @@ async function loadMembers(){
   if(!guests.children.length)guests.append(el('li','None'));
   for(const b of d.blocked)row(blocked,b.email||b.sub,when(b.blockedAt),(()=>{const u=el('button','Unblock');u.type='button';u.onclick=()=>{u.disabled=true;act('unblock',b.sub);};return u;})());
   if(!blocked.children.length)blocked.append(el('li','None'));
- }catch(e){count.textContent='';mErr.textContent=e.message;}
+ }catch(e){for(const u of [roster,guests,blocked])u.replaceChildren();count.textContent='';mErr.textContent=e.message;}
 }
 loadMembers();
