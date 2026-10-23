@@ -1,13 +1,13 @@
 const CONFIG=JSON.parse(document.getElementById('calendarConfig').textContent);
 let ROSTER=CONFIG.roster;
-const $=id=>document.getElementById(id),USER_KEY='ucla-pickleball-user-v1',PENDING_KEY='ucla-pickleball-pending-v1',TOKEN_KEY='ucla-pickleball-session-v1',CACHE_KEY='pickleball-reservations-v1';
+const $=id=>document.getElementById(id),PENDING_KEY='ucla-pickleball-pending-v1',CACHE_KEY='pickleball-reservations-v1';
 const norm=s=>s.trim().replace(/\s+/g,' ').toLowerCase();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const guestSuffix=' [guest]';
 const isGuest=name=>typeof name==='string'&&name.endsWith(guestSuffix)&&name.length<=109&&name.slice(0,-guestSuffix.length).trim().split(/\s+/).length>=2&&!/[\[\]\p{C}]/u.test(name.slice(0,-guestSuffix.length));
 const playerName=name=>isGuest(name)?name.slice(0,-guestSuffix.length):name;
 const playerHtml=name=>esc(playerName(name))+(isGuest(name)?' <span class="guest-tag">[guest]</span>':'');
-let loginMode='member',loginPending=false,playerToken='',tokenPlayer='',tokenExpires=0,sessionRequest=null,saveCount=0;
+let saveCount=0;
 const localToday=()=>laDay.format(new Date());
 const laDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}),laNow=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}),dayFormats={};
 const dateObj=s=>new Date(s+'T12:00:00Z');
@@ -22,9 +22,8 @@ const live=m=>`${m.date}T${m.end}`>clubNow(),chipTime=t=>timeLabel(t).replace(':
 const started=m=>`${m.date}T${isPractice(m)?m.end:m.start}`<=clubNow();
 function practiceForDate(date){const weekday=dateObj(date).getUTCDay(),start=weekday===4?'17:00':weekday===0?'15:00':null;if(!start)return null;return {id:'practice-'+date,kind:'practice',date,start,end:weekday===4?'19:00':'17:00',court:'Club practice',capacity:null,host:'Club practice',players:[],notes:'Weekly club practice. NOT open to guests.',version:1};}
 function matchesForDate(date,rows){const practice=practiceForDate(date),regular=rows.filter(m=>m.date===date&&!m.id.startsWith('practice-'));if(practice){const saved=rows.find(m=>m.id===practice.id);regular.push({...practice,players:saved?.players||[],version:saved?.version||1});}return regular.sort((a,b)=>a.start.localeCompare(b.start));}
-let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastWrite=0,lastToday=localToday();
-try{user=localStorage.getItem(USER_KEY)||''}catch{}
-try{({token:playerToken='',player:tokenPlayer='',expires:tokenExpires=0}=JSON.parse(localStorage.getItem(TOKEN_KEY)||'{}'))}catch{}
+let user='',selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastWrite=0,lastToday=localToday();let gone=false;const signedOut=()=>{if(!gone){gone=true;location.assign('/login')}};
+user=CONFIG.player;for(const k of ['ucla-pickleball-user-v1','ucla-pickleball-session-v1'])try{localStorage.removeItem(k)}catch{}
 const problem=(error,fallback)=>error instanceof TypeError||/^(Timeout|Abort)Error$/.test(error?.name)?'Network problem. Check your connection and try again.':error?.message||fallback;
 function toast(message,ms=5000){const t=$('toast');if($('editor').open&&$('matchError').textContent===message)return;if(document.querySelector('dialog[open]')){t.hidePopover?.();t.showPopover?.()}t.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.textContent='',ms);}
 const posts=document.querySelectorAll('.post');
@@ -35,36 +34,13 @@ function showNotice(){
 }
 async function loadReservations(silent=false,fresh=false){
  if(pending.length){if(!silent){resync=true;toast('Refreshing after your save…');}return;}if(loading){if(!silent)resync=true;return;}loading=true;let stale=false;const saves=saveCount,early=window.reservationsRequest;window.reservationsRequest=null;if(!silent)$('refresh').setAttribute('aria-disabled','true');
- try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store',signal:AbortSignal.timeout?.(3e4)});const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!pending.length&&saves===saveCount){confirmed=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>180;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';if(user&&!isGuest(user)&&!ROSTER.includes(user)){user='';openLogin();}setView();if(configured&&user)ensurePlayerSession(user,3600000).catch(()=>{});}
+ try{const response=(early&&await early)||await fetch('/api/reservations'+(fresh?'?fresh=1':''),{cache:'no-store',signal:AbortSignal.timeout?.(3e4)});if(response.status===401)return signedOut();const data=await response.json().catch(()=>({}));if(!response.ok||typeof data.configured!=='boolean')throw Error(data.error||'Could not load reservations.');configured=data.configured===true;ROSTER=data.roster||ROSTER;if(!pending.length&&saves===saveCount){confirmed=configured?data.matches:[];if(configured)saveCopy(data.matches,ROSTER);}loaded=true;fromDevice=false;stale=!fresh&&data.copyAge>180;loadError=configured?'':'Shared reservations are not connected. The owner needs to finish setup at /admin.';setView();}
  catch(error){const message=problem(error,'Could not load reservations.');if(!loaded||fromDevice||loadError)loadError=message;fromDevice=false;render();if(!silent)toast(message);}
  finally{loading=false;$('refresh').setAttribute('aria-disabled',String(fromDevice));}
  if(stale&&Date.now()-lastWrite>=3e4)loadReservations(true,true);settle();
 }
-function requireUser(){if(user)return true;openLogin();return false;}
-async function ensurePlayerSession(name,margin=60000){
- if(playerToken&&tokenPlayer===name&&tokenExpires>Date.now()+margin)return playerToken;
- if(sessionRequest?.name===name)return sessionRequest.promise;const promise=(async()=>{
- const response=await fetch('/api/player-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player:name})});
- const data=await response.json().catch(()=>({}));if(!response.ok||data.player!==name||typeof data.token!=='string')throw Error(data.error||'Could not confirm your player name. Please retry.');
- playerToken=data.token;tokenPlayer=data.player;tokenExpires=data.expires*1000;try{localStorage.setItem(TOKEN_KEY,JSON.stringify({token:playerToken,player:tokenPlayer,expires:tokenExpires}))}catch{}return playerToken;})();
- sessionRequest={name,promise};try{return await promise}finally{if(sessionRequest?.promise===promise)sessionRequest=null}
-}
-function setLoginMode(mode){loginMode=mode;$('loginTitle').textContent=mode==='guest'?'Welcome, guest.':'Hey, Bruin.';$('loginIntro').textContent=mode==='guest'?'Enter any first and last name. Your name will show a red [guest] tag on signups.':'Enter your name as it appears on the club roster to join the calendar.';$('loginSubmit').textContent=mode==='guest'?'Enter as guest':'Enter calendar';$('guestMode').textContent=mode==='guest'?'Use club roster':'Continue as guest';$('loginError').textContent='';}
-function openLogin(){if(loginPending)return;setLoginMode('member');$('loginCancel').hidden=!user;$('loginForm').reset();if(!$('login').open)$('login').showModal();}
 function ask({title,day,note,keep,ok}){const d=$('confirm');if(d.open)return Promise.resolve(false);$('confirmTitle').textContent=title;$('confirmDay').textContent=day;$('confirmNote').textContent=note;$('confirmKeep').textContent=keep;$('confirmOk').textContent=ok;d.returnValue='';return new Promise(resolve=>{const done=()=>resolve(d.returnValue==='ok');d.addEventListener('close',done,{once:true});try{d.showModal();}catch{d.removeEventListener('close',done);return resolve(false);}$('confirmKeep').focus();});}
 $('confirm').addEventListener('click',event=>{if(event.target!==event.currentTarget)return;const r=event.currentTarget.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.currentTarget.close();});
-$('login').addEventListener('cancel',event=>{if(!user||loginPending)event.preventDefault()});
-$('loginCancel').onclick=()=>{if(user)$('login').close()};
-$('switchUser').onclick=()=>{$('profileMenu').hidePopover?.();openLogin()};
-$('guestMode').onclick=()=>{setLoginMode(loginMode==='guest'?'member':'guest');$('first').focus();};
-$('loginForm').onsubmit=async event=>{event.preventDefault();if(loginPending)return;if(!loaded||!configured||loadError){$('loginError').textContent=loadError||'Loading the club roster. Please wait and try again.';loadReservations(true);return;}const first=$('first').value.trim().replace(/\s+/g,' '),last=$('last').value.trim().replace(/\s+/g,' ');let name;
- if(loginMode==='guest'){name=first+' '+last+guestSuffix;if(!first||!last||first.length>50||last.length>50||!isGuest(name)){$('loginError').textContent='Enter a first and last name without brackets or control characters.';return;}}
- else{name=ROSTER.find(n=>norm(n)===norm(first+' '+last));if(!name){$('loginError').textContent='Name not found. Check the club roster or continue as guest.';return;}}
- loginPending=true;$('loginSubmit').disabled=true;$('guestMode').disabled=true;$('loginCancel').disabled=true;$('loginSubmit').textContent='Checking name…';
- try{await ensurePlayerSession(name);user=name;try{localStorage.setItem(USER_KEY,user)}catch{toast('Your browser cannot remember your player name.')}$('login').close();render();}
- catch(error){$('loginError').textContent=problem(error,'Could not confirm your player name. Please retry.');}
- finally{loginPending=false;$('loginSubmit').disabled=false;$('guestMode').disabled=false;$('loginCancel').disabled=false;$('loginSubmit').textContent=loginMode==='guest'?'Enter as guest':'Enter calendar';}
-};
 function displayRange(){const last=addDays(windowStart,5);const sameMonth=windowStart.slice(0,7)===last.slice(0,7);const first=dayLabel(windowStart,{month:'short',day:'numeric',...(windowStart.slice(0,4)!==last.slice(0,4)?{year:'numeric'}:{})});return first+' – '+(sameMonth?dateObj(last).getUTCDate()+', '+last.slice(0,4):dayLabel(last,{month:'short',day:'numeric',year:'numeric'}));}
 // Spots drawn as dots: host plus joined players filled, the viewer's own spot gold. Text only past `max`.
 const spots=(m,max)=>{const total=m.capacity+1,taken=m.players.length+1,me=m.host===user||m.players.includes(user);return isPractice(m)||total>max?'':`<span class="spots" aria-hidden="true">${Array.from({length:total},(_,i)=>`<i class="${i<taken?(me&&!i?'me':'on'):''}"></i>`).join('')}</span>`};
@@ -127,15 +103,15 @@ function landed(rows,action,payload,id,user){
  const t=x=>String(x??'').trim(),r=payload.reservation;return !!m&&m.date===r.date&&m.start===r.start&&m.end===r.end&&t(m.court)===t(r.court)&&Number(m.capacity)===Number(r.capacity)&&t(m.notes)===t(r.notes);
 }
 async function verifySave(action,payload,id,who){
- const t0=Date.now(),end=t0+30e3;let seen=null;for(const at of [3e3,8e3,15e3]){await new Promise(r=>setTimeout(r,Math.max(0,t0+at-Date.now())));if(Date.now()>=end)break;try{const r=await fetch('/api/reservations?fresh=1',{cache:'no-store',signal:AbortSignal.timeout?.(Math.max(1e3,end-Date.now()))});const d=await r.json();if(r.ok&&Array.isArray(d.matches)){if(landed(d.matches,action,payload,id,who))return {data:d,state:'present'};seen=d}}catch{}}
+ const t0=Date.now(),end=t0+30e3;let seen=null;for(const at of [3e3,8e3,15e3]){await new Promise(r=>setTimeout(r,Math.max(0,t0+at-Date.now())));if(Date.now()>=end)break;try{const r=await fetch('/api/reservations?fresh=1',{cache:'no-store',signal:AbortSignal.timeout?.(Math.max(1e3,end-Date.now()))});if(r.status===401){signedOut();break}const d=await r.json();if(r.ok&&Array.isArray(d.matches)){if(landed(d.matches,action,payload,id,who))return {data:d,state:'present'};seen=d}}catch{}}
  return seen?{data:seen,state:'absent'}:{state:'unknown'};
 }
 const settle=()=>{if(!pending.length&&resync&&!loading){resync=false;loadReservations(true,true);}};
 // ponytail: one save in flight at a time; queued-but-unsent ops are lost if the page closes while an earlier op is in flight (~2 s normally, up to ~80 s when Google stalls: two 25 s POSTs plus the 30 s verify). Persist the queue in sessionStorage if that bites.
 async function run(op){
  const {action,payload,requestId,who}=op;let data=null,text='',failed=false,sent=false;
- const send=async()=>{sent=false;const token=await ensurePlayerSession(who);sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action,player:who,requestId,...payload})})};
- const save=async()=>{let response=await send();if(response.status===401){playerToken='';tokenExpires=0;try{localStorage.removeItem(TOKEN_KEY)}catch{}response=await send();}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,busy:d?.busy===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
+ const send=async()=>{sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json'},body:JSON.stringify({action,player:who,requestId,...payload})})};
+ const save=async()=>{const response=await send();if(response.status===401){signedOut();throw Object.assign(Error('Your session ended. Signing you in again…'),{server:true,status:401});}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,busy:d?.busy===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
  try{data=await save();}
  catch(error){
   const doubt=x=>sent&&(x.uncertain||!x.server&&navigator.onLine!==false);let e=error,unsure=doubt(e);
@@ -148,7 +124,7 @@ async function run(op){
  setView();if(text)(failed&&!/changed/.test(text)&&op.reopen||toast)(text);settle();
 }
 function mutate(action,payload,applied,reopen){
- if(loadError){$('matchError').textContent=loadError;toast(loadError);loadReservations(true);}if(fromDevice||!loaded||loadError||!requireUser())return false;if(Date.now()-lastOp<400)return false;
+ if(loadError){$('matchError').textContent=loadError;toast(loadError);loadReservations(true);}if(fromDevice||!loaded||loadError)return false;if(Date.now()-lastOp<400)return false;
  const who=user,retry=['create','edit'].includes(action),signature=JSON.stringify({action,player:who,...payload});let saved;try{saved=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
  const requestId=retry&&saved?.signature===signature?saved.requestId:crypto.randomUUID(),op={action,payload,requestId,who,reopen},draft=JSON.parse(JSON.stringify(matches));
  try{applyLocal(draft,action,payload,requestId)}catch(error){const message=problem(error,'Could not confirm the update. Refresh before retrying.');$('matchError').textContent=message;toast(message);resync=true;settle();return false;}
@@ -158,7 +134,7 @@ function mutate(action,payload,applied,reopen){
 function signup(match,joining){if(mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
 const capacityHint=()=>{$('capacity').setCustomValidity(+$('capacity').value>7?'Choose up to 7 other players (8 on the court).':+$('capacity').value<(+$('capacity').min||0)?'Keep room for the '+$('capacity').min+' already signed up.':'');$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`+(+$('capacity').value===7?' (up to 7 others, 8 on the court)':'')};
 function openEditor(match=null){
- if(!loaded||loadError||!requireUser())return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER.length-1));$('capacity').min=match?.players.length||0;$('notes').value=match?.notes??'';capacityHint();$('editor').showModal();
+ if(!loaded||loadError)return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER.length-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER.length-1));$('capacity').min=match?.players.length||0;$('notes').value=match?.notes??'';capacityHint();$('editor').showModal();
 }
 $('capacity').oninput=capacityHint;document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const c=$('capacity');c.value=Math.min(+c.max||42,Math.max(+c.min||0,(+c.value||0)+ +b.dataset.step));capacityHint()});
 posts.forEach(b=>b.onclick=()=>openEditor());document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{listFilter=b.dataset.filter;render()});$('closeEditor').onclick=()=>$('editor').close();
@@ -171,4 +147,4 @@ const autoRefresh=()=>{const today=localToday();if(today!==lastToday){if(windowS
 window.addEventListener('focus',autoRefresh);window.addEventListener('online',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);setInterval(autoRefresh,30000);
 try{const c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(Array.isArray(c?.matches)&&Array.isArray(c.roster)&&Date.now()-c.savedAt<7*864e5){confirmed=matches=c.matches;ROSTER=c.roster;configured=loaded=fromDevice=true}}catch{}
 const bar=document.querySelector('.sidehead');if(bar&&'ResizeObserver' in window)new ResizeObserver(()=>document.documentElement.style.setProperty('--stick',bar.offsetHeight+'px')).observe(bar);
-$('toast').showPopover?.();render();void loadReservations();if(!user)openLogin();
+$('toast').showPopover?.();render();void loadReservations();

@@ -22,7 +22,7 @@
   <div id="profileMenu" class="menu" popover>
     <p class="muted small">Playing as</p>
     <p id="identity"></p>
-    <button id="switchUser">Switch player</button>
+    <form method="post" action="/auth/logout"><button id="signOut">Sign out</button></form>
   </div>
   <button class="primary post" id="postTop">+ Post reservation</button>
 </header>
@@ -61,23 +61,6 @@
   </div>
 </main>
 
-<dialog id="login" aria-labelledby="loginTitle">
-  <h2 id="loginTitle">Hey, Bruin.</h2>
-  <p class="muted" id="loginIntro">Enter your name as it appears on the club roster to join the calendar.</p>
-  <form id="loginForm">
-    <div class="row">
-      <label>First name<input id="first" maxlength="50" autocomplete="given-name" required></label>
-      <label>Last name<input id="last" maxlength="50" autocomplete="family-name" required></label>
-    </div>
-    <div class="error" id="loginError" role="alert"></div>
-    <div class="modalactions">
-      <button type="button" id="loginCancel">Cancel</button>
-      <button class="primary" id="loginSubmit">Enter calendar</button>
-    </div>
-  </form>
-  <button type="button" id="guestMode" class="guest-toggle">Continue as guest</button>
-  <p class="muted small">Honor system: use your own name. No password required.</p>
-</dialog>
 
 <dialog id="confirm" aria-labelledby="confirmTitle" aria-describedby="confirmDay confirmNote">
   <h2 id="confirmTitle"></h2>
