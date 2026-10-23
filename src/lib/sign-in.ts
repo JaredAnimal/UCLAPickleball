@@ -29,7 +29,6 @@ export async function endSession(request:Request):Promise<string>{
  const token=tokenOf(request);if(token)await database().prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(token)).run();
  return cookie('',0);
 }
-export async function endAllSessions(sub:string):Promise<void>{await database().prepare('DELETE FROM sessions WHERE sub=?').bind(sub).run();}
 export async function deleteExpiredSessions():Promise<void>{await database().prepare('DELETE FROM sessions WHERE expires_at<=?').bind(now()).run();}
 // Roster from the D1 copy (null with no Sheet connected), refreshed from the Sheet when missing or older than 5 minutes (as the old player-session did); null when none can be had.
 export async function rosterNames():Promise<string[]|null>{
