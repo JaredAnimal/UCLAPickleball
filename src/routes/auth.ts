@@ -18,9 +18,8 @@ export async function start(request:Request){
 }
 export async function callback(request:Request){
  if(!configured())return go(303,'/login?e=setup');
- if((await readSession(request))?.player)return go(303,'/');
  const q=new URL(request.url).searchParams,mine=(request.headers.get('cookie')||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(OAUTH+'='))?.slice(OAUTH.length+1)||'',[state,nonce]=mine.split('.');
- if(!state||!nonce||q.get('state')!==state)return refuse('expired','state');
+ if(!state||!nonce||q.get('state')!==state){if((await readSession(request))?.player)return go(303,'/');return refuse('expired','state');}
  const code=q.get('code');if(q.get('error')||!code)return refuse('google','google error');
  let claims:any;
  try{

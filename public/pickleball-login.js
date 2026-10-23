@@ -17,9 +17,9 @@ if(CONFIG.stage==='name'){
   try{
    const r=await fetch('/auth/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tab,first:$('first').value,last:$('last').value})}),d=await r.json().catch(()=>null);
    if(r.ok&&d?.ok)return location.assign('/');
-   say(d?.error||"Couldn't sign in right now. Try again.",d?.code==='roster-name');
+   if(d?.code==='signin')return location.reload();say(d?.error||"Couldn't sign in right now. Try again.",d?.code==='roster-name');
   }catch{say('Network problem. Check your connection and try again.')}
-  button.disabled=false;button.textContent='Sign in';
+  button.disabled=false;button.textContent='Sign in';button.focus();
  };
 }else{
  const inApp=IN_APP.test(navigator.userAgent);

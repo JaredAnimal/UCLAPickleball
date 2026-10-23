@@ -111,7 +111,7 @@ const settle=()=>{if(!pending.length&&resync&&!loading){resync=false;loadReserva
 async function run(op){
  const {action,payload,requestId,who}=op;let data=null,text='',failed=false,sent=false;
  const send=async()=>{sent=true;return fetch('/api/reservations',{method:'POST',keepalive:true,signal:AbortSignal.timeout?.(25e3),headers:{'Content-Type':'application/json'},body:JSON.stringify({action,player:who,requestId,...payload})})};
- const save=async()=>{const response=await send();if(response.status===401){signedOut();throw Object.assign(Error('Your session ended. Signing you in again…'),{server:true,status:401});}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,busy:d?.busy===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
+ const save=async()=>{const response=await send();if(response.status===401){signedOut();throw Object.assign(Error('Your session ended. Sign in again.'),{server:true,status:401});}const d=await response.json().catch(()=>null);if(!response.ok||d?.ok!==true)throw Object.assign(Error(d?.error||'Google Sheets did not confirm the update. Refresh before retrying.'),{server:true,status:response.status,uncertain:!d||d.uncertain===true,busy:d?.busy===true,data:response.status===409&&Array.isArray(d?.matches)&&Array.isArray(d?.roster)?d:null});return d;};
  try{data=await save();}
  catch(error){
   const doubt=x=>sent&&(x.uncertain||!x.server&&navigator.onLine!==false);let e=error,unsure=doubt(e);
@@ -144,7 +144,7 @@ $('matchForm').onsubmit=event=>{event.preventDefault();const reservation={date:$
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>{if($('refresh').getAttribute('aria-disabled')==='true')return;loadReservations(false,true)};
 const autoRefresh=()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};
-window.addEventListener('focus',autoRefresh);window.addEventListener('online',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);setInterval(autoRefresh,30000);
+window.addEventListener('pageshow',e=>{if(e.persisted)location.reload()});window.addEventListener('focus',autoRefresh);window.addEventListener('online',autoRefresh);document.addEventListener('visibilitychange',autoRefresh);setInterval(autoRefresh,30000);
 try{const c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');if(Array.isArray(c?.matches)&&Array.isArray(c.roster)&&Date.now()-c.savedAt<7*864e5){confirmed=matches=c.matches;ROSTER=c.roster;configured=loaded=fromDevice=true}}catch{}
 const bar=document.querySelector('.sidehead');if(bar&&'ResizeObserver' in window)new ResizeObserver(()=>document.documentElement.style.setProperty('--stick',bar.offsetHeight+'px')).observe(bar);
 $('toast').showPopover?.();render();void loadReservations();

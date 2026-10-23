@@ -15,7 +15,7 @@ export async function POST(request:Request){
  const player=(await readSession(request))?.player;if(!player)return json({error:'Sign in before changing reservations.'},401);
  const raw=await request.text();if(raw.length>12000)return json({error:'Request is too large.'},400);const p=JSON.parse(raw)??{};
  if(!['create','edit','join','leave','cancel','remove'].includes(p.action)||typeof p.player!=='string'||p.player.length>120||typeof p.requestId!=='string'||!/^[a-zA-Z0-9_-]{16,100}$/.test(p.requestId))return json({error:'Invalid reservation request.'},400);
- if(p.player!==player)return json({error:'Your selected player changed. Choose your name again.'},403);
+ if(p.player!==player)return json({error:"You're signed in as a different player now. Reload the page."},403);
  if(p.action!=='create'&&(typeof p.id!=='string'||p.id.length>100))return json({error:'Invalid reservation.'},400);
  if(p.action==='join'&&p.id.startsWith('practice-')&&p.player.endsWith(' [guest]'))return json({error:'Club practice is NOT open to guests.'},403);
  if(p.action==='remove'&&(typeof p.target!=='string'||!p.target||p.target.length>120))return json({error:'Choose an attendee to remove.'},400);

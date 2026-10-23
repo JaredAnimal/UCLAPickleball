@@ -1,7 +1,7 @@
 import {isOwner} from '../lib/admin-access';
 import {json,sameOrigin,tooLarge} from '../lib/sheet-connection';
 import {database} from '../lib/database';
-import {endAllSessions,rosterNames,rosterMatch} from '../lib/sign-in';
+import {rosterNames,rosterMatch} from '../lib/sign-in';
 const DENIED='Only the site owner can manage members.';
 export async function GET(request:Request){
  if(!await isOwner(request))return json({error:DENIED},403);
@@ -20,8 +20,7 @@ export async function POST(request:Request){
  if(action==='unblock')await d.prepare('DELETE FROM blocked WHERE sub=?').bind(sub).run();
  else{
   const email=((await d.prepare('SELECT email FROM links WHERE sub=?').bind(sub).first<{email:string}>())??(await d.prepare('SELECT email FROM sessions WHERE sub=? LIMIT 1').bind(sub).first<{email:string}>()))?.email??'';
-  await d.batch([d.prepare('DELETE FROM links WHERE sub=?').bind(sub),...action==='block'?[d.prepare('INSERT OR REPLACE INTO blocked (sub,email,blocked_at) VALUES (?,?,?)').bind(sub,email,Math.floor(Date.now()/1000))]:[]]);
-  await endAllSessions(sub);
+  await d.batch([d.prepare('DELETE FROM links WHERE sub=?').bind(sub),d.prepare('DELETE FROM sessions WHERE sub=?').bind(sub),...action==='block'?[d.prepare('INSERT OR REPLACE INTO blocked (sub,email,blocked_at) VALUES (?,?,?)').bind(sub,email,Math.floor(Date.now()/1000))]:[]]);
  }
  return json({ok:true});
 }
