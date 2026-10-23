@@ -92,7 +92,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-Keep the encryption key stable after connecting the Sheet. Replacing it requires reconnecting with the Sheet secret. Changing the owner password invalidates owner sessions. Changing the session secret invalidates bot sessions.
+Keep the encryption key stable after connecting the Sheet. Replacing it requires reconnecting with the Sheet secret. Changing the owner password invalidates owner sessions. Changing the session secret invalidates bot and owner sessions. No secret change signs players out; only deleting their `sessions` rows (or an officer's Unlink) does.
 
 ## Google sign-in setup
 
@@ -100,6 +100,8 @@ Keep the encryption key stable after connecting the Sheet. Replacing it requires
 2. In the OAuth consent screen's **Audience** tab, choose **Publish app** (In production). A new External app starts in Testing, where only listed test users can sign in. The `openid`, `email` and `profile` scopes need no Google verification.
 3. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` for local work and add both as Worker secrets.
 4. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before merging to main (merging deploys)**. The site is sign-in-first, so the new code cannot serve players without those tables.
+
+Finish all four steps **before merging**: the client published, the production redirect URI added, both Worker secrets set and the migration applied. Without the secrets every player sees "Sign-in isn't set up yet."; a missing redirect URI, an unpublished client or a missing migration also blocks players.
 
 ## Reconnect the existing Google Sheet
 
@@ -157,6 +159,7 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 - With approved test names, check host creation/removal and member/guest joins, then remove any test reservations.
 - Confirm guests cannot join practice and practice capacity is unlimited.
 - Check the bot page password, owner settings protection, and phone layout.
+- On a phone, sign in as a member and as a guest, then sign out.
 - Change the destination of the shared short link only after the new deployment works. Keep the old site until cutover is complete.
 
 ## Source map
