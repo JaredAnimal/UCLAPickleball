@@ -7,6 +7,7 @@ import * as botDownload from './routes/bot-download';
 import * as admin from './routes/admin';
 import * as auth from './routes/auth';
 import * as login from './routes/login';
+import * as members from './routes/members';
 import {loadConnection} from './lib/sheet-connection';
 import {refreshCopy} from './lib/reservation-copy';
 import {deleteExpiredSessions} from './lib/sign-in';
@@ -21,6 +22,7 @@ const routes: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = {
   '/bot/download': botDownload,
   '/admin': admin,
   '/login': login,
+  '/api/members': members,
   '/auth/google': {GET: auth.start},
   '/auth/callback': {GET: auth.callback},
   '/auth/logout': {POST: auth.logout},

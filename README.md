@@ -10,9 +10,9 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
 - Shared reservations through the existing private Google Sheet and Apps Script bridge.
 - Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. The Windows ZIP download is served only after unlocking the page.
-- Separate password-protected owner settings, encrypted connection storage, signed player sessions, and automated checks.
+- Separate password-protected owner settings, encrypted connection storage, Google sign-in sessions, and automated checks.
 
-The calendar deliberately uses the club's honor system for player names. Selecting a roster name is not proof of a person's identity. Owner settings use a separate server password.
+Players sign in with a UCLA Google account (`g.ucla.edu` or `ucla.edu`). A member links one roster name to the account once; a guest types a first and last name, shown with a red `[guest]` marker and reserved for that account. Officers unlink or block accounts in `/admin` → Members. Owner settings use a separate server password and never need Google.
 
 ## Update the automation bot ZIP
 
@@ -81,6 +81,8 @@ This type-checks the Worker, tests the Apps Script reservation rules and calenda
 | `BOT_DOWNLOAD_PASSWORD` | The bot download-page password you want to retain |
 | `BOT_SESSION_SECRET` | A random 32-byte signing secret, for example 64 hexadecimal characters |
 | `SHEETS_ENCRYPTION_KEY` | Exactly 32 random bytes encoded as base64 |
+| `GOOGLE_CLIENT_ID` | The OAuth client ID from [Google sign-in setup](#google-sign-in-setup) |
+| `GOOGLE_CLIENT_SECRET` | The OAuth client secret from the same client |
 | `SHEETS_SPREADSHEET_ID` | The existing private spreadsheet ID, copied from its Google Sheets URL between `/d/` and `/edit` |
 
 Generate the two keys locally with Node.js. These commands print new random values on your own computer; save them directly into Cloudflare's secret fields:
@@ -90,7 +92,13 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-Keep the encryption key stable after connecting the Sheet. Replacing it requires reconnecting with the Sheet secret. Changing the owner password invalidates owner sessions. Changing the session secret invalidates bot and player sessions.
+Keep the encryption key stable after connecting the Sheet. Replacing it requires reconnecting with the Sheet secret. Changing the owner password invalidates owner sessions. Changing the session secret invalidates bot sessions.
+
+## Google sign-in setup
+
+1. In Google Cloud, create an OAuth client with user type **External**, application type **Web application**, scopes `openid`, `email` and `profile`, and these redirect URIs: `http://localhost:8787/auth/callback` and `https://<your-worker-host>/auth/callback`.
+2. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` for local work and add both as Worker secrets.
+3. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before deploying**. The site is sign-in-first, so the new code cannot serve players without those tables.
 
 ## Reconnect the existing Google Sheet
 
@@ -157,10 +165,14 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 | `src/worker.ts` | HTTP routes, static asset serving, and the scheduled handler that refreshes the Sheet copy every minute |
 | `src/pages/calendar.html` | Calendar page and forms |
 | `public/pickleball-calendar.js` / `.css` | Calendar behavior and responsive styles |
-| `src/routes/` | Reservation, session, owner setup, and bot handlers |
+| `src/routes/` | Reservation, owner setup, and bot handlers |
+| `src/routes/auth.ts` | Google sign-in start, callback, name step, and sign-out |
+| `src/routes/login.ts` / `src/pages/login.html` / `public/pickleball-login.js` | The `/login` page |
+| `src/routes/members.ts` | Owner-only Members list API (unlink, block, unblock) |
+| `src/lib/sign-in.ts` | Sessions, roster matching, and link helpers |
 | `src/lib/reservation-copy.ts` | Copy of the latest confirmed Sheet response in D1, so the calendar loads instantly |
 | `src/lib/sheet-connection.ts` | Verified Google bridge and encrypted configuration |
 | `src/lib/admin-access.ts` | Owner password sessions and login throttling |
 | `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
-| `migrations/` | D1 schema for settings (including the reservations copy) and owner login throttling |
+| `migrations/` | D1 schema for settings (including the reservations copy), owner login throttling, and sign-in sessions, links and blocked accounts |

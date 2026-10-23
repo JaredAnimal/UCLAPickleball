@@ -309,6 +309,31 @@ await guestLink('login-xss','Jamie </script><b>Visitor [guest]','guest:login xss
 for(const [body,to] of [['next=google','/auth/google'],['','/login'],['next=Google','/login'],['next=https%3A%2F%2Fevil.invalid','/login'],['next=google&next=x','/auth/google']]){s=await googleSignIn({sub:'login-next'});response=await publicCall('/auth/logout',{method:'POST',signedOut:true,headers:{Cookie:s.cookie,Origin:'https://calendar.invalid','Content-Type':'application/x-www-form-urlencoded'},body});assert.equal(response.status,303,body);assert.equal(response.headers.get('location'),to,body);assert.equal(response.headers.get('set-cookie'),'__Host-pb_s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax');assert.equal((await sessions('login-next')).length,0,body);}
 response=await publicCall('/auth/logout',{method:'POST',signedOut:true,headers:{Origin:'https://calendar.invalid','Content-Length':'1001'},body:'next=google'+'x'.repeat(990)});assert.equal(response.status,303);assert.equal(response.headers.get('location'),'/login');passed('Use a different account (next=google) signs out and restarts Google; any other next lands on /login');
 }finally{quiet=false;}}
+// Officers' Members list: owner-only GET/POST on /api/members.
+{quiet=true;try{
+await putCopy(Date.now(),{ok:true,apiVersion:2,sheetId,matches:[],roster:['Mem One','Mem Two'],at:Date.now()});
+const mem=(b,o={})=>call('/api/members',{method:'POST',headers:{'Content-Type':'application/json',...o.headers},body:typeof b==='string'?b:JSON.stringify(b)}),list=async()=>(await call('/api/members')).json();
+assert.equal((await publicCall('/api/members',{signedOut:true})).status,403);assert.equal((await publicCall('/api/members')).status,403);
+const acct=async n=>(await googleSignIn({sub:'n-'+n,email:n+'@g.ucla.edu'})).cookie,nameAs=(cookie,body)=>publicCall('/auth/name',{method:'POST',signedOut:true,headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(body)}),linkOf=sub=>db.prepare('SELECT * FROM links WHERE sub=?').bind(sub).first(),guestLink=(sub,player,key)=>db.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?)').bind(sub,'guest',player,key,sub+'@g.ucla.edu',1).run();
+const m1=await acct('mm1'),m2=await acct('mm2');assert.equal((await nameAs(m1,{tab:'club',first:'Mem',last:'One'})).status,200);assert.equal((await nameAs(m2,{tab:'club',first:'Mem',last:'Two'})).status,200);
+await guestLink('n-mmg','Jamie Visitor [guest]','guest:mm jamie visitor');
+const dev2=(await googleSignIn({sub:'n-mm1',email:'mm1@g.ucla.edu'})).cookie;assert.ok(dev2);
+await putCopy(Date.now(),{ok:true,apiVersion:2,sheetId,matches:[],roster:['Mem One'],at:Date.now()});
+response=await call('/api/members');assert.equal(response.status,200);let d=await response.json();assert.deepEqual(d.roster,['Mem One']);
+const by=Object.fromEntries(d.links.map(l=>[l.sub,l]));assert.equal(by['n-mm1'].onRoster,true);assert.equal(by['n-mm1'].kind,'member');assert.equal(by['n-mm1'].email,'mm1@g.ucla.edu');assert.equal(by['n-mm2'].onRoster,false);assert.equal(by['n-mmg'].kind,'guest');assert.ok(!d.blocked.some(b=>b.sub.startsWith('n-mm')));
+assert.ok(d.links.every((l,i,a)=>!i||a[i-1].linkedAt>=l.linkedAt));
+await db.prepare("DELETE FROM app_settings WHERE key='reservations_copy'").run();googleReply={ok:false,error:'down'};d=await list();assert.equal(d.roster,null);assert.ok(d.links.length>=3&&d.links.every(l=>l.onRoster===null));googleReply=null;await seedRoster();
+assert.equal((await mem({action:'unlink',sub:'n-mm1'},{headers:{Origin:'https://evil.invalid','Sec-Fetch-Site':'cross-site'}})).status,403);assert.ok(await linkOf('n-mm1'));
+assert.equal((await publicCall('/api/members',{method:'POST',signedOut:true,body:JSON.stringify({action:'unlink',sub:'n-mm1'})})).status,403);
+for(const b of [{action:'nuke',sub:'n-mm1'},{action:'unlink'},{action:'unlink',sub:''},{action:'unlink',sub:'x'.repeat(300)},{action:'block',sub:5},'{','null'])assert.equal((await mem(b)).status,400,JSON.stringify(b));
+assert.equal((await mem('x'.repeat(2001),{headers:{'Content-Length':'2001'}})).status,413);
+assert.equal((await sessions('n-mm1')).length,2);response=await mem({action:'unlink',sub:'n-mm1'});assert.equal(response.status,200);assert.equal(await linkOf('n-mm1'),null);assert.equal((await sessions('n-mm1')).length,0);
+assert.equal((await publicCall('/api/reservations',{signedOut:true,headers:{Cookie:dev2}})).status,401);
+assert.equal((await mem({action:'block',sub:'n-mm2'})).status,200);assert.equal(await linkOf('n-mm2'),null);assert.equal((await sessions('n-mm2')).length,0);d=await list();{const b=d.blocked.filter(x=>x.sub==='n-mm2');assert.deepEqual(b.map(x=>x.email),['mm2@g.ucla.edu']);assert.ok(b[0].blockedAt>1);}
+let s=await googleSignIn({sub:'n-mm2',email:'mm2@g.ucla.edu'});assert.equal(s.location,'/login?e=blocked');assert.equal(s.cookie,null);
+assert.equal((await mem({action:'unblock',sub:'n-mm2'})).status,200);assert.ok(!(await list()).blocked.some(b=>b.sub==='n-mm2'));s=await googleSignIn({sub:'n-mm2',email:'mm2@g.ucla.edu'});assert.notEqual(s.location,'/login?e=blocked');assert.ok(s.cookie);
+passed('officers can list, unlink, block and unblock members');
+}finally{quiet=false;}}
 quiet=false;
 }
 assert.ok(!logs.some(l=>/googleusercontent|qa_echo/.test(l)||l.includes(sheetSecret)));passed('logs never contain the echo URL or the connection secret');
