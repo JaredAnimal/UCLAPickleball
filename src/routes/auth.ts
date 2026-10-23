@@ -9,7 +9,7 @@ const b64=(n:number)=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uin
 const oauthCookie=(value:string,age:number)=>`${OAUTH}=${value}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
 const go=(status:number,to:string,...cookies:string[])=>{const h=new Headers({Location:to,'Cache-Control':NO_STORE});for(const c of cookies)h.append('Set-Cookie',c);return new Response(null,{status,headers:h});};
 const refuse=(e:string,reason:string,hd?:string)=>{console.warn('Sign-in refused: '+reason+(hd===undefined?'':' hd='+String(hd).slice(0,60)));return go(303,'/login?e='+e,oauthCookie('',0));};
-const configured=()=>!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET);
+export const configured=()=>!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET);
 export async function start(request:Request){
  if(!configured())return go(302,'/login?e=setup');
  const state=b64(16),nonce=b64(16),u=new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -42,7 +42,9 @@ export async function callback(request:Request){
 }
 export async function logout(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
- return go(303,'/login',await endSession(request));
+ // "Use a different account" posts next=google to go straight back to Google's account chooser; no other value is honored.
+ const next=!tooLarge(request,1000)&&new URLSearchParams((await request.text()).slice(0,1000)).get('next')==='google';
+ return go(303,next?'/auth/google':'/login',await endSession(request));
 }
 const fail=(status:number,code:string,error:string)=>json({error,code},status);
 const MSG:Record<string,[number,string]>={signin:[401,'Sign in with Google first.'],invalid:[400,'Enter a first and a last name (up to 50 characters each, no brackets).'],'not-found':[404,"We couldn't find that name on the club roster. Check the spelling, or sign in as a guest."],taken:[409,"That name is linked to a different UCLA account. If it's yours, ask a club officer to reset it."],duplicate:[409,'Two roster names match. Ask a club officer.'],limit:[429,'Too many tries today. Sign in as a guest for now, or ask a club officer.'],'roster-name':[409,'That name is on the club roster. Use the Club tab.'],'guest-taken':[409,'Another UCLA account uses that guest name. Add a middle initial.'],roster:[503,"Can't check the club roster right now. Try again in a minute."]};
