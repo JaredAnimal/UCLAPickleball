@@ -96,12 +96,13 @@ Keep the encryption key stable after connecting the Sheet. Replacing it requires
 
 ## Google sign-in setup
 
-1. In Google Cloud, create an OAuth client with user type **External**, application type **Web application**, scopes `openid`, `email` and `profile`, and these redirect URIs: `http://localhost:8787/auth/callback` and `https://<your-worker-host>/auth/callback`.
-2. In the OAuth consent screen's **Audience** tab, choose **Publish app** (In production). A new External app starts in Testing, where only listed test users can sign in. The `openid`, `email` and `profile` scopes need no Google verification.
-3. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` for local work and add both as Worker secrets.
-4. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before merging to main (merging deploys)**. The site is sign-in-first, so the new code cannot serve players without those tables.
+1. In Google Cloud, create a project and set up **Google Auth Platform** with user type **External**. Under **Branding**, add the home page `https://<your-worker-host>/`, the privacy policy `https://<your-worker-host>/privacy` and the Worker host's parent domain as an authorized domain; Google won't publish the app without them. Under **Data Access**, add `openid` and `email`.
+2. Under **Clients**, create a **Web application** client with these redirect URIs: `http://localhost:8787/auth/callback` and `https://<your-worker-host>/auth/callback`.
+3. Under **Audience**, choose **Publish app** (In production). A new External app starts in Testing, where only listed test users can sign in. `openid` and `email` need no Google verification; uploading a logo would.
+4. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` for local work and add both as Worker secrets. Google shows a new client secret only once.
+5. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before merging to main (merging deploys)**. The site is sign-in-first, so the new code cannot serve players without those tables.
 
-Finish all four steps **before merging**: the client published, the production redirect URI added, both Worker secrets set and the migration applied. Without the secrets every player sees "Sign-in isn't set up yet."; a missing redirect URI, an unpublished client or a missing migration also blocks players.
+Finish all five steps **before merging**: the app published, the production redirect URI added, both Worker secrets set and the migration applied. Without the secrets every player sees "Sign-in isn't set up yet."; a missing redirect URI, an unpublished app or a missing migration also blocks players. If the site's domain changes, update the branding links, the authorized domain and the production redirect URI.
 
 ## Reconnect the existing Google Sheet
 
@@ -172,6 +173,7 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 | `src/routes/` | Reservation, owner setup, and bot handlers |
 | `src/routes/auth.ts` | Google sign-in start, callback, name step, and sign-out |
 | `src/routes/login.ts` / `src/pages/login.html` / `public/pickleball-login.js` | The `/login` page |
+| `public/privacy.html` | Public privacy page, linked from the sign-in page and Google's consent screen |
 | `src/routes/members.ts` | Owner-only Members list API (unlink, block, unblock) |
 | `src/lib/sign-in.ts` | Sessions, roster matching, and link helpers |
 | `src/lib/reservation-copy.ts` | Copy of the latest confirmed Sheet response in D1, so the calendar loads instantly |

@@ -24,6 +24,7 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 
 ## Data and secrets
 
+- `public/privacy.html` is the public privacy page Google's consent screen links to. Update it whenever what sign-in stores, or who can see it, changes.
 - Keep runtime passwords, `.dev.vars`, `.env`, database files, browser sessions, and Google connection secrets out of Git.
 - Do not embed real roster names, spreadsheet IDs, owner email addresses, or deployment URLs in public repository files. Use synthetic fixtures in tests and private runtime configuration for the Sheet.
 - Public players must never receive the connection secret, encryption key, bot password, or owner password.
