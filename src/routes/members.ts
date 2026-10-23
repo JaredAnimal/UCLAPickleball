@@ -1,13 +1,12 @@
 import {isOwner} from '../lib/admin-access';
 import {json,sameOrigin,tooLarge} from '../lib/sheet-connection';
 import {database} from '../lib/database';
-import {endAllSessions,rosterNames} from '../lib/sign-in';
-import {normalize} from '../lib/player-session';
+import {endAllSessions,rosterNames,rosterMatch} from '../lib/sign-in';
 const DENIED='Only the site owner can manage members.';
 export async function GET(request:Request){
  if(!await isOwner(request))return json({error:DENIED},403);
- const d=database(),roster=await rosterNames(),keys=roster&&new Set(roster.map(normalize));
- const links=((await d.prepare('SELECT sub,kind,player,email,linked_at FROM links ORDER BY linked_at DESC, sub').all()).results as any[]).map(l=>({sub:l.sub,kind:l.kind,player:l.player,email:l.email,linkedAt:l.linked_at,onRoster:keys?l.kind==='member'?keys.has(normalize(l.player)):null:null}));
+ const d=database(),roster=await rosterNames();
+ const links=((await d.prepare('SELECT sub,kind,player,email,linked_at FROM links ORDER BY linked_at DESC, sub').all()).results as any[]).map(l=>({sub:l.sub,kind:l.kind,player:l.player,email:l.email,linkedAt:l.linked_at,...(()=>{const m=roster&&l.kind==='member'?rosterMatch(l.player,roster):undefined,rosterName=m==null||m==='duplicate'?null:m;return {rosterName,onRoster:roster&&l.kind==='member'?rosterName!==null:null};})()}));
  const blocked=((await d.prepare('SELECT sub,email,blocked_at FROM blocked ORDER BY blocked_at DESC, sub').all()).results as any[]).map(b=>({sub:b.sub,email:b.email,blockedAt:b.blocked_at}));
  return json({roster,links,blocked});
 }

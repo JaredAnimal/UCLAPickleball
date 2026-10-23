@@ -332,6 +332,9 @@ assert.equal((await publicCall('/api/reservations',{signedOut:true,headers:{Cook
 assert.equal((await mem({action:'block',sub:'n-mm2'})).status,200);assert.equal(await linkOf('n-mm2'),null);assert.equal((await sessions('n-mm2')).length,0);d=await list();{const b=d.blocked.filter(x=>x.sub==='n-mm2');assert.deepEqual(b.map(x=>x.email),['mm2@g.ucla.edu']);assert.ok(b[0].blockedAt>1);}
 let s=await googleSignIn({sub:'n-mm2',email:'mm2@g.ucla.edu'});assert.equal(s.location,'/login?e=blocked');assert.equal(s.cookie,null);
 assert.equal((await mem({action:'unblock',sub:'n-mm2'})).status,200);assert.ok(!(await list()).blocked.some(b=>b.sub==='n-mm2'));s=await googleSignIn({sub:'n-mm2',email:'mm2@g.ucla.edu'});assert.notEqual(s.location,'/login?e=blocked');assert.ok(s.cookie);
+{const row=async sub=>(await list()).links.find(l=>l.sub===sub);await guestLink('n-mmx','Zoë Ünder [guest]','guest:mm x');const m3=await acct('mm3');await putCopy(Date.now(),{ok:true,apiVersion:2,sheetId,matches:[],roster:['Mem Three'],at:Date.now()});assert.equal((await nameAs(m3,{tab:'club',first:'Mem',last:'Three'})).status,200);
+ await putCopy(Date.now(),{ok:true,apiVersion:2,sheetId,matches:[],roster:['MEM  three'],at:Date.now()});let r=await row('n-mm3');assert.equal(r.rosterName,'MEM  three');assert.equal(r.onRoster,true);
+ await putCopy(Date.now(),{ok:true,apiVersion:2,sheetId,matches:[],roster:['Mem Three','mem three'],at:Date.now()});r=await row('n-mm3');assert.equal(r.rosterName,null);assert.equal(r.onRoster,false);assert.equal((await row('n-mmx')).onRoster,null);await seedRoster();}
 passed('officers can list, unlink, block and unblock members');
 }finally{quiet=false;}}
 quiet=false;

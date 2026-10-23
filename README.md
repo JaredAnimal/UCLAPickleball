@@ -97,8 +97,9 @@ Keep the encryption key stable after connecting the Sheet. Replacing it requires
 ## Google sign-in setup
 
 1. In Google Cloud, create an OAuth client with user type **External**, application type **Web application**, scopes `openid`, `email` and `profile`, and these redirect URIs: `http://localhost:8787/auth/callback` and `https://<your-worker-host>/auth/callback`.
-2. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` for local work and add both as Worker secrets.
-3. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before deploying**. The site is sign-in-first, so the new code cannot serve players without those tables.
+2. In the OAuth consent screen's **Audience** tab, choose **Publish app** (In production). A new External app starts in Testing, where only listed test users can sign in. The `openid`, `email` and `profile` scopes need no Google verification.
+3. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` for local work and add both as Worker secrets.
+4. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before deploying**. The site is sign-in-first, so the new code cannot serve players without those tables.
 
 ## Reconnect the existing Google Sheet
 
