@@ -1,4 +1,5 @@
-export const normalize=(s:string)=>s.trim().replace(/\s+/g,' ').toLowerCase();
+// One matching rule for roster names and name keys: accents, case, apostrophes and punctuation do not matter; non-Latin letters survive.
+export const normalize=(s:string)=>s.normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/['’‘`]/g,'').replace(/[^\p{L}]+/gu,' ').trim();
 export function canonicalPlayer(value:unknown,roster:string[]):string|null{
  if(typeof value!=='string'||!value||value.length>120)return null;
  const member=roster.find(name=>normalize(name)===normalize(value));if(member)return member;

@@ -1,8 +1,9 @@
 import {env} from 'cloudflare:workers';
 import {database} from '../lib/database';
-import {json,sameOrigin} from '../lib/sheet-connection';
-import {normalize} from '../lib/player-session';
-import {createSession,readSession,endSession,rosterNames} from '../lib/sign-in';
+import {json,sameOrigin,tooLarge} from '../lib/sheet-connection';
+import {canonicalPlayer,normalize} from '../lib/player-session';
+import {attemptsAllowed} from '../lib/admin-access';
+import {createSession,readSession,endSession,rosterNames,rosterMatch,setSessionPlayer} from '../lib/sign-in';
 const OAUTH='__Host-pb_oauth',NO_STORE='private, no-store',HD=['g.ucla.edu','ucla.edu'],ISS=['accounts.google.com','https://accounts.google.com'];
 const b64=(n:number)=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(n)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const oauthCookie=(value:string,age:number)=>`${OAUTH}=${value}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
@@ -36,10 +37,36 @@ export async function callback(request:Request){
  if(await database().prepare('SELECT 1 FROM blocked WHERE sub=?').bind(sub).first())return refuse('blocked','blocked');
  // Linked member: the name must still be on the roster (stored with the roster's spelling); guests and unlinked accounts go to the name step.
  const link=await database().prepare('SELECT kind,player FROM links WHERE sub=?').bind(sub).first<{kind:string;player:string}>();
- const player=link?.kind==='member'?(await rosterNames())?.find(n=>normalize(n)===normalize(link.player))??null:null;
+ const player=link?.kind==='member'?(m=>m==='duplicate'?null:m)(rosterMatch(link.player,(await rosterNames())||[])):null;
  return go(303,player?'/':'/login',await createSession(sub,email,player),oauthCookie('',0));
 }
 export async function logout(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
  return go(303,'/login',await endSession(request));
+}
+const fail=(status:number,code:string,error:string)=>json({error,code},status);
+const MSG:Record<string,[number,string]>={signin:[401,'Sign in with Google first.'],invalid:[400,'Enter a first and a last name (up to 50 characters each, no brackets).'],'not-found':[404,"We couldn't find that name on the club roster. Check the spelling, or sign in as a guest."],taken:[409,"That name is linked to a different UCLA account. If it's yours, ask a club officer to reset it."],duplicate:[409,'Two roster names match. Ask a club officer.'],limit:[429,'Too many tries today. Sign in as a guest for now, or ask a club officer.'],'roster-name':[409,'That name is on the club roster. Use the Club tab.'],'guest-taken':[409,'Another UCLA account uses that guest name. Add a middle initial.'],roster:[503,"Can't check the club roster right now. Try again in a minute."]};
+const refused=(code:string)=>fail(MSG[code][0],code,MSG[code][1]);
+export async function name(request:Request){
+ if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
+ if(tooLarge(request,1000))return json({error:'Request is too large.'},413);
+ const session=await readSession(request);if(!session)return refused('signin');
+ const text=await request.text();if(text.length>1000)return json({error:'Request is too large.'},400);
+ let body:any;try{body=JSON.parse(text);}catch{return refused('invalid');}
+ const tab=body?.tab,first=typeof body?.first==='string'?body.first.trim().replace(/\s+/g,' '):'',last=typeof body?.last==='string'?body.last.trim().replace(/\s+/g,' '):'';
+ if((tab!=='club'&&tab!=='guest')||!first||!last||first.length>50||last.length>50)return refused('invalid');
+ const guest=tab==='guest',typed=first+' '+last,canon=guest?canonicalPlayer(typed+' [guest]',[]):typed;
+ if(!canon)return refused('invalid');
+ const roster=await rosterNames();if(!roster)return refused('roster');
+ let player:string,key:string;
+ if(guest){if(rosterMatch(typed,roster)!==null)return refused('roster-name');player=canon;key='guest:'+normalize(typed);}
+ else{
+  if(!await attemptsAllowed('name:'+session.sub,10,86400))return refused('limit');
+  const m=rosterMatch(typed,roster);if(m===null)return refused('not-found');if(m==='duplicate')return refused('duplicate');
+  player=m;key='member:'+normalize(m);
+ }
+ try{await database().prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?) ON CONFLICT(sub) DO UPDATE SET kind=excluded.kind,player=excluded.player,name_key=excluded.name_key,email=excluded.email,linked_at=excluded.linked_at').bind(session.sub,guest?'guest':'member',player,key,session.email,Math.floor(Date.now()/1000)).run();}
+ catch(error){if(/UNIQUE constraint failed: links\.name_key/.test(String((error as Error)?.message)+String((error as any)?.cause?.message)))return refused(guest?'guest-taken':'taken');throw error;}
+ await setSessionPlayer(session.hash,player);
+ return json({ok:true});
 }

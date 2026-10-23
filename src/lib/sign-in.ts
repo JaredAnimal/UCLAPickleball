@@ -1,5 +1,6 @@
 import {database} from './database';
 import {loadConnection} from './sheet-connection';
+import {normalize} from './player-session';
 import {readCopy,refreshCopy} from './reservation-copy';
 
 export type Session={hash:string;sub:string;email:string;player:string|null;expiresAt:number;renewedAt:number};
@@ -39,3 +40,5 @@ export async function rosterNames():Promise<string[]|null>{
   try{return (await refreshCopy(connection)).data.roster;}catch{return copy?.data.roster??null;}
  }catch{return null;}
 }
+// The one roster spelling whose key matches; 'duplicate' when two or more share the key, null when none.
+export function rosterMatch(name:string,roster:string[]):string|'duplicate'|null{const k=normalize(name),m=roster.filter(n=>normalize(n)===k);return m.length>1?'duplicate':m[0]??null;}

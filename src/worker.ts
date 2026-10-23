@@ -22,6 +22,7 @@ const routes: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = {
   '/auth/google': {GET: auth.start},
   '/auth/callback': {GET: auth.callback},
   '/auth/logout': {POST: auth.logout},
+  '/auth/name': {POST: auth.name},
 };
 
 export default {

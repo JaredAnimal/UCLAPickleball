@@ -51,12 +51,12 @@ export async function attemptKey(request: Request) {
   return digest([...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right].slice(0, 4).map(h => parseInt(h, 16).toString(16)).join(':'));
 }
 // Counts the attempt before the password is checked, so parallel guesses can't all slip under the limit.
-export async function attemptsAllowed(key: string) {
+export async function attemptsAllowed(key: string, limit = 5, seconds = 900) {
   const now = Math.floor(Date.now() / 1000);
   await database().prepare('DELETE FROM admin_attempts WHERE expires <= ?').bind(now).run();
   const row = await database().prepare(`INSERT INTO admin_attempts (key, attempts, expires) VALUES (?, 1, ?)
-    ON CONFLICT(key) DO UPDATE SET attempts = attempts + 1 RETURNING attempts`).bind(key, now + 900).first<{attempts:number}>();
-  return !!row && row.attempts <= 5;
+    ON CONFLICT(key) DO UPDATE SET attempts = attempts + 1 RETURNING attempts`).bind(key, now + seconds).first<{attempts:number}>();
+  return !!row && row.attempts <= limit;
 }
 export async function clearAttempts(key: string) {
   await database().prepare('DELETE FROM admin_attempts WHERE key = ?').bind(key).run();
