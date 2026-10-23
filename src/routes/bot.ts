@@ -12,7 +12,7 @@ function page(unlocked=false,error='',status=200){
  <span class="bot-download-badge" aria-hidden="true">.EXE</span>
  </button>
  </form>
- <p class="bot-disclaimer" id="downloadDisclaimer">Windows only. Read README for instructions.</p>
+ <p class="bot-disclaimer" id="downloadDisclaimer">Windows only.</p>
  </section>
  <div class="bot-footer"><a href="/">← Back to calendar</a><form method="post" action="/bot"><input type="hidden" name="action" value="lock"><button>Lock page</button></form></div>`:
  `<h2>Automation bot <span class="beta-label">[BETA]</span></h2><p class="muted">Enter the password to open the download page.</p>

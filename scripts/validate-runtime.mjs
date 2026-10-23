@@ -74,7 +74,7 @@ for(const invalidCookie of ['',cookie+'invalid','pickleball_bot_access=1.'+'0'.r
 assert.equal((await publicCall('/downloads/Picklebot-Windows.zip')).status,404);
 passed('the installer download route requires a valid bot session');
 response=await publicCall('/bot',{headers:{Cookie:cookie}});
-{const html=await response.text();assert.ok(html.includes('Windows only. Read README for instructions.'));assert.ok(html.includes('>.EXE</span>'));assert.ok(!html.includes('>.ZIP</span>'));assert.ok(html.indexOf('id="downloadDisclaimer"')>html.indexOf('</button>'));}
+{const html=await response.text();assert.ok(html.includes('Windows only.'));assert.ok(html.includes('>.EXE</span>'));assert.ok(!html.includes('>.ZIP</span>'));assert.ok(html.indexOf('id="downloadDisclaimer"')>html.indexOf('</button>'));}
 response=await publicCall('/bot/download',{headers:{Cookie:cookie}});
 const installerUrl='https://github.com/JaredAnimal/UCLAPickleball/releases/download/picklebot-v0.2.2/Picklebot-Setup-0.2.2.exe';
 assert.equal(response.status,302);assert.equal(response.headers.get('location'),installerUrl);assert.match(response.headers.get('cache-control'),/private, no-store/);
@@ -82,7 +82,7 @@ assert.equal(await response.text(),'');
 response=await publicCall('/bot/download',{method:'HEAD',headers:{Cookie:cookie}});assert.equal(response.status,302);
 assert.equal(response.headers.get('location'),installerUrl);assert.equal(await response.text(),'');
 assert.equal((await publicCall('/bot/download',{method:'POST',headers:{Cookie:cookie}})).status,405);
-passed('unlocked download redirects to the EXE installer; instructions follow the button');
+passed('unlocked download redirects to the EXE installer; Windows-only notice follows the button');
 
 response=await publicCall('/bot',{headers:{Cookie:cookie+'invalid'}});assert.ok(!(await response.text()).includes('action="/bot/download"'));response=await publicCall('/bot',{headers:{Cookie:'pickleball_bot_access=1.'+'0'.repeat(64)}});assert.ok(!(await response.text()).includes('action="/bot/download"'));passed('forged and expired bot sessions stay locked');
 response=await publicCall('/bot',{method:'POST',body:'password='+encodeURIComponent(testPassword),headers:{Origin:'https://other.invalid','Sec-Fetch-Site':'cross-site'}});assert.equal(response.status,403);response=await publicCall('/bot',{method:'POST',redirect:'manual',body:'action=lock'});assert.equal(response.status,303);assert.ok(response.headers.get('set-cookie').includes('Max-Age=0'));passed('bot access can be locked and rejects cross-site requests');
