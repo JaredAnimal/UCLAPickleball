@@ -5,7 +5,7 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 ## What is included
 
 - Mobile-friendly calendar showing today and the next five days in the club's Pacific time zone.
-- Roster name selection and first/last-name guests, with red `[guest]` labels.
+- UCLA Google sign-in; members link a roster name once, guests type first and last name, shown with red `[guest]` labels.
 - Reservations default to Sunset Rec; hosts choose additional slots and manage attendees.
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
 - Shared reservations through the existing private Google Sheet and Apps Script bridge.
@@ -99,7 +99,7 @@ Keep the encryption key stable after connecting the Sheet. Replacing it requires
 1. In Google Cloud, create an OAuth client with user type **External**, application type **Web application**, scopes `openid`, `email` and `profile`, and these redirect URIs: `http://localhost:8787/auth/callback` and `https://<your-worker-host>/auth/callback`.
 2. In the OAuth consent screen's **Audience** tab, choose **Publish app** (In production). A new External app starts in Testing, where only listed test users can sign in. The `openid`, `email` and `profile` scopes need no Google verification.
 3. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.dev.vars` for local work and add both as Worker secrets.
-4. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before deploying**. The site is sign-in-first, so the new code cannot serve players without those tables.
+4. Run `pnpm db:remote` to apply migration `0002_sign_in.sql` **before merging to main (merging deploys)**. The site is sign-in-first, so the new code cannot serve players without those tables.
 
 ## Reconnect the existing Google Sheet
 
