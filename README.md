@@ -9,16 +9,16 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 - Reservations default to Sunset Rec; hosts choose additional slots and manage attendees.
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
 - Shared reservations through the existing private Google Sheet and Apps Script bridge.
-- Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. The Windows ZIP download is served only after unlocking the page.
+- Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. After unlocking, the download button opens the Windows EXE installer hosted on GitHub Releases.
 - Separate password-protected owner settings, encrypted connection storage, Google sign-in sessions, and automated checks.
 
 Players sign in with a UCLA Google account (`g.ucla.edu` or `ucla.edu`). A member links one roster name to the account once; a guest types a first and last name, shown with a red `[guest]` marker and reserved for that account. Officers unlink or block accounts in `/admin` → Members. Owner settings use a separate server password and never need Google.
 
-## Update the automation bot ZIP
+## Update the automation bot installer
 
-In GitHub, open `downloads/`, choose **Add file → Upload files**, and upload your ZIP named exactly **Picklebot-Windows.zip**, replacing the existing file. Commit it to a branch and merge its pull request to publish through the existing Cloudflare build connection. No code edits are needed for later ZIP replacements.
+The current installer is **Picklebot-Setup-0.2.2.exe**, attached to the `picklebot-v0.2.2` GitHub release. Release assets support installers larger than GitHub's repository file limit and keep the binary out of the Worker bundle.
 
-The password-protected bot page serves the ZIP through `/bot/download`. Its download button shows the disclaimer “Windows only. Read README for instructions.” directly underneath. Keep the ZIP out of `public/` so it stays behind the existing password gate.
+The password-protected `/bot/download` route redirects unlocked visitors to the release asset. The release asset itself is public, like this repository. The button shows `.EXE` and the disclaimer “Windows only. Read README for instructions.” directly underneath. For a later version, upload the new release asset, update the URL in `src/routes/bot-download.ts`, and push directly to `main` to publish through the existing Cloudflare build connection.
 
 ## Moving from the current site
 

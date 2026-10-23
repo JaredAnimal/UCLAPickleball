@@ -16,4 +16,3 @@ declare namespace Cloudflare {
 }
 declare module '*.html' { const text: string; export default text; }
 declare module '*.gs' { const text: string; export default text; }
-declare module '*.zip' { const data: ArrayBuffer; export default data; }

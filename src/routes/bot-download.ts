@@ -1,13 +1,10 @@
-import archive from '../../downloads/Picklebot-Windows.zip';
 import {hasBotAccess} from '../lib/bot-access';
 
 export async function GET(request:Request){
  try{
   if(!await hasBotAccess(request,'public-bot'))return new Response(null,{status:303,headers:{Location:'/bot','Cache-Control':'private, no-store'}});
-  return new Response(archive,{headers:{
-   'Content-Type':'application/zip',
-   'Content-Disposition':'attachment; filename="Picklebot-Windows.zip"',
-   'Content-Length':String(archive.byteLength),
+  return new Response(null,{status:302,headers:{
+   Location:'https://github.com/JaredAnimal/UCLAPickleball/releases/download/picklebot-v0.2.2/Picklebot-Setup-0.2.2.exe',
    'Cache-Control':'private, no-store',
   }});
  }catch{
