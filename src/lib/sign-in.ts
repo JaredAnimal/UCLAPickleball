@@ -1,7 +1,6 @@
 import {database} from './database';
 import {loadConnection} from './sheet-connection';
 import {readCopy,refreshCopy} from './reservation-copy';
-import {ROSTER} from './pickleball-config';
 
 export type Session={hash:string;sub:string;email:string;player:string|null;expiresAt:number;renewedAt:number};
 export const SESSION_COOKIE='__Host-pb_s';
@@ -32,10 +31,10 @@ export async function endSession(request:Request):Promise<string>{
 }
 export async function endAllSessions(sub:string):Promise<void>{await database().prepare('DELETE FROM sessions WHERE sub=?').bind(sub).run();}
 export async function deleteExpiredSessions():Promise<void>{await database().prepare('DELETE FROM sessions WHERE expires_at<=?').bind(now()).run();}
-// Roster from the D1 copy, refreshed from the Sheet when missing or older than 5 minutes (as the old player-session did); null when none can be had.
+// Roster from the D1 copy (null with no Sheet connected), refreshed from the Sheet when missing or older than 5 minutes (as the old player-session did); null when none can be had.
 export async function rosterNames():Promise<string[]|null>{
  try{
-  const connection=await loadConnection();if(!connection)return ROSTER;
+  const connection=await loadConnection();if(!connection)return null;
   const copy=await readCopy();if(copy&&Date.now()-copy.savedAt<=300000)return copy.data.roster;
   try{return (await refreshCopy(connection)).data.roster;}catch{return copy?.data.roster??null;}
  }catch{return null;}
