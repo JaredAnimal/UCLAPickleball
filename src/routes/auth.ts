@@ -1,9 +1,9 @@
 import {env} from 'cloudflare:workers';
 import {database} from '../lib/database';
 import {json,sameOrigin,tooLarge} from '../lib/sheet-connection';
-import {canonicalPlayer,normalize} from '../lib/player-session';
+import {normalize} from '../lib/player-session';
 import {attemptsAllowed} from '../lib/admin-access';
-import {createSession,readSession,endSession,rosterNames,rosterMatch} from '../lib/sign-in';
+import {createSession,readSession,endSession,rosterNames,rosterMatch,linkedName} from '../lib/sign-in';
 const OAUTH='__Host-pb_oauth',NO_STORE='private, no-store',HD=['g.ucla.edu','ucla.edu'],ISS=['accounts.google.com','https://accounts.google.com'];
 const b64=(n:number)=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(n)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const oauthCookie=(value:string,age:number)=>`${OAUTH}=${value}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
@@ -36,7 +36,9 @@ export async function callback(request:Request){
  if(await database().prepare('SELECT 1 FROM blocked WHERE sub=?').bind(sub).first())return refuse('blocked','blocked');
  // Linked member: the name must still be on the roster (stored with the roster's spelling); guests and unlinked accounts go to the name step.
  const link=await database().prepare('SELECT kind,player FROM links WHERE sub=?').bind(sub).first<{kind:string;player:string}>();
- const player=link?.kind==='member'?(m=>m==='duplicate'?null:m)(rosterMatch(link.player,(await rosterNames())||[])):null;
+ const player=link?.kind==='member'?(m=>m==='duplicate'?null:m)(linkedName(link.player,(await rosterNames())||[])):null;
+ // A session already in this browser's cookie is ended, not left valid behind the new one.
+ await endSession(request);
  return go(303,player?'/':'/login',await createSession(sub,email,player),oauthCookie('',0));
 }
 export async function logout(request:Request){
@@ -52,15 +54,17 @@ export async function name(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
  if(tooLarge(request,1000))return json({error:'Request is too large.'},413);
  const session=await readSession(request);if(!session)return refused('signin');
+ // Already signed in (a double tap, a second tab): change nothing. A member's name changes only through an officer's Unlink.
+ if(session.player)return json({ok:true});
  const text=await request.text();if(text.length>1000)return json({error:'Request is too large.'},400);
  let body:any;try{body=JSON.parse(text);}catch{return refused('invalid');}
  const tab=body?.tab,first=typeof body?.first==='string'?body.first.trim().replace(/\s+/g,' '):'',last=typeof body?.last==='string'?body.last.trim().replace(/\s+/g,' '):'';
- if((tab!=='club'&&tab!=='guest')||!first||!last||first.length>50||last.length>50)return refused('invalid');
- const guest=tab==='guest',typed=first+' '+last,canon=guest?canonicalPlayer(typed+' [guest]',[]):typed;
- if(!canon)return refused('invalid');
+ if((tab!=='club'&&tab!=='guest')||![first,last].every(s=>s.length<=50&&/\p{L}/u.test(s)))return refused('invalid');
+ const guest=tab==='guest',typed=first+' '+last;
+ if(guest&&/[\[\]\p{C}]/u.test(typed))return refused('invalid');
  const roster=await rosterNames();if(!roster)return refused('roster');
  let player:string,key:string;
- if(guest){if(rosterMatch(typed,roster)!==null)return refused('roster-name');player=canon;key='guest:'+normalize(typed);}
+ if(guest){if(rosterMatch(typed,roster)!==null)return refused('roster-name');player=typed+' [guest]';key='guest:'+normalize(typed);}
  else{
   if(!await attemptsAllowed('name:'+session.sub,10,86400))return refused('limit');
   const m=rosterMatch(typed,roster);if(m===null)return refused('not-found');if(m==='duplicate')return refused('duplicate');
