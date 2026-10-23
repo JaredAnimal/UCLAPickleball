@@ -91,7 +91,7 @@ main.login{max-width:440px}.login-card{padding:24px;animation:rise .32s var(--ea
 @keyframes rise{from{opacity:0;transform:translateY(8px)}}@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.97)}}@keyframes fade{from{opacity:0}}@keyframes sheet{from{transform:translateY(100%)}}@keyframes spin{to{transform:rotate(360deg)}}
 /* Phones keep :hover after a tap, which would make the last tapped button look selected. */
 @media(hover:hover) and (pointer:fine){button:hover:not(:disabled),.nav-button:hover{background:#f6f9fc;border-color:#b6c3d0}.primary:hover:not(:disabled){background:var(--blue-press);border-color:var(--blue-press)}.post:hover:not(:disabled){background:var(--gold-press);border-color:var(--gold-press)}.calendar .day:hover{background:var(--surface);border-color:transparent;box-shadow:var(--shadow-lift)}.calendar .day.selected:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue),var(--shadow-lift)}.filter[aria-pressed=true]:hover{background:var(--ink);border-color:var(--ink)}.link:hover:not(:disabled){background:none}.gsi:hover{background:#f8f9fa}.seg button:hover:not(:disabled){background:none;border-color:transparent}.seg [aria-pressed=false]:hover{color:var(--ink)}.nav .icon:hover:not(:disabled){background:#eaf0f6;border-color:transparent}}
-@media(prefers-reduced-motion:reduce){*,dialog::backdrop{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after,dialog::backdrop{animation:none!important;transition:none!important}}
 @media(max-width:1100px){.layout{grid-template-columns:minmax(0,1fr);gap:24px}.day{min-height:160px}}
 @media(max-width:900px){.calendar{grid-template-columns:repeat(3,minmax(0,1fr))}.day{min-height:170px}}
 @media(max-width:540px){
