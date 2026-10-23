@@ -13,7 +13,7 @@ export const configured=()=>!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET);
 export async function start(request:Request){
  if(!configured())return go(302,'/login?e=setup');
  const state=b64(16),nonce=b64(16),u=new URL('https://accounts.google.com/o/oauth2/v2/auth');
- for(const [k,v] of Object.entries({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:new URL('/auth/callback',request.url).href,response_type:'code',scope:'openid email profile',prompt:'select_account',state,nonce}))u.searchParams.set(k,v);
+ for(const [k,v] of Object.entries({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:new URL('/auth/callback',request.url).href,response_type:'code',scope:'openid email',prompt:'select_account',state,nonce}))u.searchParams.set(k,v);
  return go(302,u.href,oauthCookie(state+'.'+nonce,600));
 }
 export async function callback(request:Request){
