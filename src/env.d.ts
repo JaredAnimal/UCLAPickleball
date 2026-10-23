@@ -8,6 +8,8 @@ declare namespace Cloudflare {
     BOT_SESSION_SECRET: string;
     SHEETS_ENCRYPTION_KEY: string;
     SHEETS_SPREADSHEET_ID: string;
+    GOOGLE_CLIENT_ID: string;
+    GOOGLE_CLIENT_SECRET: string;
     SHEET_TIMEOUT_MS?: string;
     SHEET_DEADLINE_MS?: string;
   }
