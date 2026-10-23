@@ -25,7 +25,6 @@ export async function renewSession(session:Session,request:Request):Promise<stri
  await database().prepare('UPDATE sessions SET expires_at=?,renewed_at=? WHERE token_hash=?').bind(t+LIFE,t,session.hash).run();
  const token=tokenOf(request);return token?cookie(token,LIFE):null;
 }
-export async function setSessionPlayer(hash:string,player:string):Promise<void>{await database().prepare('UPDATE sessions SET player=? WHERE token_hash=?').bind(player,hash).run();}
 export async function endSession(request:Request):Promise<string>{
  const token=tokenOf(request);if(token)await database().prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha256(token)).run();
  return cookie('',0);

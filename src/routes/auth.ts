@@ -3,7 +3,7 @@ import {database} from '../lib/database';
 import {json,sameOrigin,tooLarge} from '../lib/sheet-connection';
 import {canonicalPlayer,normalize} from '../lib/player-session';
 import {attemptsAllowed} from '../lib/admin-access';
-import {createSession,readSession,endSession,rosterNames,rosterMatch,setSessionPlayer} from '../lib/sign-in';
+import {createSession,readSession,endSession,rosterNames,rosterMatch} from '../lib/sign-in';
 const OAUTH='__Host-pb_oauth',NO_STORE='private, no-store',HD=['g.ucla.edu','ucla.edu'],ISS=['accounts.google.com','https://accounts.google.com'];
 const b64=(n:number)=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(n)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const oauthCookie=(value:string,age:number)=>`${OAUTH}=${value}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
@@ -65,8 +65,7 @@ export async function name(request:Request){
   const m=rosterMatch(typed,roster);if(m===null)return refused('not-found');if(m==='duplicate')return refused('duplicate');
   player=m;key='member:'+normalize(m);
  }
- try{await database().prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?) ON CONFLICT(sub) DO UPDATE SET kind=excluded.kind,player=excluded.player,name_key=excluded.name_key,email=excluded.email,linked_at=excluded.linked_at').bind(session.sub,guest?'guest':'member',player,key,session.email,Math.floor(Date.now()/1000)).run();}
+ try{const d=database();await d.batch([d.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?) ON CONFLICT(sub) DO UPDATE SET kind=excluded.kind,player=excluded.player,name_key=excluded.name_key,email=excluded.email,linked_at=excluded.linked_at').bind(session.sub,guest?'guest':'member',player,key,session.email,Math.floor(Date.now()/1000)),d.prepare('UPDATE sessions SET player=? WHERE sub=?').bind(player,session.sub)]);}
  catch(error){if(/UNIQUE constraint failed: links\.name_key/.test(String((error as Error)?.message)+String((error as any)?.cause?.message)))return refused(guest?'guest-taken':'taken');throw error;}
- await setSessionPlayer(session.hash,player);
  return json({ok:true});
 }
