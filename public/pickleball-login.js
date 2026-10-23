@@ -8,7 +8,7 @@ if(CONFIG.stage==='name'){
  let tab;
  const say=(text,fix=false)=>{$('nameError').textContent=text;$('fix').hidden=!fix};
  const pick=t=>{if($('submit').disabled)return;tab=t;card.dataset.tab=t;$('clubTab').setAttribute('aria-pressed',t==='club');$('guestTab').setAttribute('aria-pressed',t==='guest');$('clubNote').hidden=t!=='club';$('guestNote').hidden=t==='club';say('')};
- $('email').textContent=CONFIG.email;$('first').value=CONFIG.first;$('last').value=CONFIG.last;pick(CONFIG.tab);if(CONFIG.error)say(CONFIG.error);
+ $('email').textContent=CONFIG.email;$('first').value=CONFIG.first;$('last').value=CONFIG.last;$('submit').disabled=false;pick(CONFIG.tab);if(CONFIG.error)say(CONFIG.error);
  $('clubTab').onclick=()=>pick('club');$('guestTab').onclick=()=>pick('guest');
  $('toGuest').onclick=()=>{pick('guest');$('guestTab').focus()};
  $('fix').onclick=()=>{pick('club');$('clubTab').focus()};
