@@ -224,6 +224,11 @@ assert.notEqual((await publicCall('/api/player-session',{method:'POST',body:JSON
 passed('sessions store a 64-hex token hash, never the token');
 {const t=Math.floor(Date.now()/1000),ins=(h,exp)=>db.prepare('INSERT INTO sessions (token_hash,sub,email,player,expires_at,renewed_at) VALUES (?,?,?,?,?,?)').bind(h,'cron-sub','harness@example.invalid',null,exp,t).run(),has=async h=>!!(await db.prepare('SELECT 1 x FROM sessions WHERE token_hash=?').bind(h).first());await ins('c'.repeat(64),t-5);await ins('d'.repeat(64),t+500);assert.equal((await cron()).outcome,'ok');for(let i=0;i<150&&await has('c'.repeat(64));i++)await sleep(20);assert.equal(await has('c'.repeat(64)),false);assert.equal(await has('d'.repeat(64)),true);}
 passed('the minute job deletes expired sessions and keeps live ones');
+{const o=await login('Alex Example'),c='pickleball_owner_access=x; __Host-pb_s='+o.token;
+response=await publicCall('/api/reservations',{signedOut:true,headers:{Cookie:c}});assert.equal(response.status,200);
+response=await publicCall('/api/reservations',{headers:{Cookie:'other=1'}});assert.equal(response.status,200);
+const k=forwarded.length;response=await publicCall('/api/reservations',{method:'POST',signedOut:true,headers:{Cookie:c,'Content-Type':'application/json'},body:JSON.stringify({...payload,player:'Alex Example',requestId:'cookie_not_first_0001'})});assert.equal(response.status,200,await response.clone().text());assert.equal(forwarded.length,k+1);}
+passed('the session cookie works when other cookies come before it');
 assert.ok(!logs.some(l=>/googleusercontent|qa_echo/.test(l)||l.includes(sheetSecret)));passed('logs never contain the echo URL or the connection secret');
 console.log(`${count} production API checks passed.`);
 }finally{await mf.dispose();}
