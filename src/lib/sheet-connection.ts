@@ -2,6 +2,7 @@ import {env} from 'cloudflare:workers';
 import {database} from './database';
 import {expectedSheetId} from './pickleball-config';
 import {clearCopy} from './reservation-copy';
+import {laYesterday,type Reservation} from './reservation-rules';
 export type SheetConnection={endpoint:string;secret:string};
 export const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private, no-store'}});
 export const tooLarge=(request:Request,limit:number)=>Number(request.headers.get('content-length'))>limit;
@@ -17,7 +18,6 @@ async function readConnection():Promise<SheetConnection|null>{const row=await da
 let cached:{at:number;connection:SheetConnection}|undefined;
 export async function loadConnection(){if(cached&&Date.now()-cached.at<60000)return cached.connection;const connection=await readConnection();if(connection)cached={at:Date.now(),connection};return connection;}
 export async function saveConnection(connection:SheetConnection){const data=JSON.stringify({endpoint:connection.endpoint,secret:await seal(connection.secret)});await database().prepare('INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('google_sheets',data).run();cached=undefined;await clearCopy();}
-export type Reservation={id:string;date:string;start:string;end:string;court:string;capacity:number|null;kind?:'practice';host:string;players:string[];notes:string;version:number};
 export type SheetResult={ok:true;apiVersion:2;matches:Reservation[];roster:string[];at:number};
 export const UNAVAILABLE='Google Sheets is unavailable. Try refreshing.';
 const SLOW='Google Sheets took too long to respond. Refresh to check whether your change saved.';
@@ -27,11 +27,10 @@ const BUSY='Another player is updating the calendar. Try again.';
 // ponytail: exact match on Version 5's wording, which sends no code; Version 6 replies carry a code that wins. Drop the lists once Version 5 is gone.
 const REJECTIONS=[BUSY,'Choose a club player or enter a guest name.','Club practice is NOT open to guests.','Practice IDs are reserved.','This practice has ended.','Weekly club practices cannot be edited or canceled.','Reservation ID already exists.','This reservation no longer exists. Refresh the calendar.','Only the host can change this match or remove players.','This match has already started.','This match changed while you were editing. Refresh before saving.','Capacity cannot be lower than the current signup count.','You are already the host.','The last spot has been filled. Refresh the calendar.','Choose an attendee to remove.','Choose a valid date.','End time must be after start time.','Choose a future start time.','Check the location and notes.','Choose up to 7 other players (8 on the court).'];
 const CONFIG=/^(Set SPREADSHEET_ID |Connection secret is incorrect\.|Reservations or Roster tab is missing\.|Check these Reservations column headers|Reservation history is too large\.)/;
-const laDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}),yesterday=()=>new Date(Date.parse(laDay.format(Date.now()))-864e5).toISOString().slice(0,10);
 const classify=(message:string)=>message===BUSY?'busy':REJECTIONS.includes(message)?'rejected':CONFIG.test(message)?'config':'internal';
 const invalid=(row:any)=>!row||typeof row.id!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(row.date)||!/^\d{2}:\d{2}$/.test(row.start)||!/^\d{2}:\d{2}$/.test(row.end)||typeof row.host!=='string'||typeof row.court!=='string'||!Array.isArray(row.players)||!row.players.every((p:unknown)=>typeof p==='string')||!(row.kind==='practice'&&row.capacity===null||Number.isInteger(row.capacity)&&row.capacity>=0&&row.capacity<=500);
 const shaped=(d:Record<string,unknown>):d is Record<string,unknown>&{matches:unknown[];roster:unknown[]}=>Array.isArray(d.matches)&&Array.isArray(d.roster)&&d.matches.length<=10000&&d.roster.length<=500;
-function tidy(d:{matches:unknown[];roster:unknown[]}){const rows=d.matches.filter(row=>!invalid(row)) as Reservation[];if(rows.length<d.matches.length)console.error('Skipped reservation rows with invalid values',d.matches.length-rows.length);const from=yesterday();return {matches:rows.filter(row=>row.date>=from),roster:d.roster.filter((name):name is string=>typeof name==='string'&&name.length<=120)};}
+function tidy(d:{matches:unknown[];roster:unknown[]}){const rows=d.matches.filter(row=>!invalid(row)) as Reservation[];if(rows.length<d.matches.length)console.error('Skipped reservation rows with invalid values',d.matches.length-rows.length);const from=laYesterday();return {matches:rows.filter(row=>row.date>=from),roster:d.roster.filter((name):name is string=>typeof name==='string'&&name.length<=120)};}
 export const playerError=(error:unknown)=>{const e=error as {message?:string;rejected?:boolean;safe?:boolean}|null;return e?.rejected||e?.safe?String(e.message):UNAVAILABLE;};
 async function attempt(connection:SheetConnection,action:string,body:string,n:number,ms:number):Promise<Record<string,unknown>>{
  const t0=Date.now(),signal=AbortSignal.timeout(ms);let leg='direct';
