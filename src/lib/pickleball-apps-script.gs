@@ -27,9 +27,12 @@ function doGet(){return reply_({ok:true,message:'Pickleball connection is online
 function doPost(event){
  let lock,sheetId,matches,roster,at;
  try{
-  const raw=event&&event.postData&&event.postData.contents;if(!raw||raw.length>15000)throw new Error('Invalid request.');
+  // ponytail: one push is one body, so 1,000,000 chars caps the mirrored window at a few thousand rows; page the push if it ever needs more.
+  const raw=event&&event.postData&&event.postData.contents;if(!raw||raw.length>1000000)throw new Error('Invalid request.');
   const p=JSON.parse(raw),props=PropertiesService.getScriptProperties(),all=props.getProperties();
+  if(p.action!=='sync'&&raw.length>15000)throw new Error('Invalid request.');
   if(!all.API_SECRET||!equal_(String(p.secret||''),all.API_SECRET))throw fail_('Connection secret is incorrect.','config');
+  if(p.action==='sync')return reply_(sync_(p,props,spreadsheetId_(all.SPREADSHEET_ID),Number(all.mirror_version)||0));
   const load=()=>{
    sheetId=spreadsheetId_(all.SPREADSHEET_ID);const ss=SpreadsheetApp.openById(sheetId),tab=ss.getSheetByName('Reservations'),rosterSheet=ss.getSheetByName('Roster');
    if(!tab||!rosterSheet)throw fail_('Reservations or Roster tab is missing.','config');
@@ -101,15 +104,49 @@ function validate_(p,now,rosterSize){
  if(!Number.isInteger(p.capacity)||p.capacity<0||p.capacity>Math.min(7,Math.max(0,rosterSize-1)))throw fail_('Choose up to 7 other players (8 on the court).','rejected');
  return {date:p.date,start:p.start,end:p.end,court:p.court.trim(),capacity:p.capacity,notes:p.notes.trim()};
 }
-function write_(sheet,m){
+function cells_(m,updated){
  const day=Date.parse(m.date+'T00:00:00Z')/86400000+25569;
  const time=s=>{const p=s.split(':').map(Number);return (p[0]*60+p[1])/1440;};
  const literal=s=>s===''?s:"'"+s;
+ return [literal(m.id),day,time(m.start),time(m.end),literal(m.court),m.kind==='practice'?'Unlimited':m.capacity,literal(m.host),literal(m.players.join('\n')),literal(m.notes),updated,m.version];
+}
+function write_(sheet,m){
  const row=m._row||sheet.getLastRow()+1;
  if(!m._row){const max=sheet.getMaxRows();if(row>max)sheet.insertRowsAfter(max,row-max+100);sheet.getRange(row,8,1,2).setWrap(true);}
  // Every write re-applies these: setValues keeps a cell's own format, so a hand-typed text date would read back as a serial number.
  sheet.getRange(row,2,1,3).setNumberFormats([['yyyy-mm-dd','hh:mm','hh:mm']]);
- sheet.getRange(row,1,1,COLUMNS.length).setValues([[literal(m.id),day,time(m.start),time(m.end),literal(m.court),m.kind==='practice'?'Unlimited':m.capacity,literal(m.host),literal(m.players.join('\n')),literal(m.notes),new Date().toISOString(),m.version]]);
+ sheet.getRange(row,1,1,COLUMNS.length).setValues([cells_(m,new Date().toISOString())]);
+}
+/** The website's database pushes its rows from `from` on (a push), or just asks for the roster; either way the reply carries the roster and its officers. */
+function sync_(p,props,sheetId,last){
+ const ss=SpreadsheetApp.openById(sheetId),tab=ss.getSheetByName('Reservations'),rosterSheet=ss.getSheetByName('Roster');
+ if(!tab||!rosterSheet)throw fail_('Reservations or Roster tab is missing.','config');
+ if(p.version!==undefined||p.from!==undefined||p.rows!==undefined){
+  // Everything the write uses is checked first, so a bad row can never stop the mirror halfway through.
+  const text=v=>typeof v==='string',day=v=>text(v)&&/^\d{4}-\d{2}-\d{2}$/.test(v),time=v=>text(v)&&/^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+  if(!Number.isInteger(p.version)||p.version<0||!day(p.from)||!Array.isArray(p.rows)||!p.rows.every(r=>r&&text(r.id)&&r.id!==''&&day(r.date)&&r.date>=p.from&&time(r.start)&&time(r.end)&&text(r.court)&&(r.capacity===null||Number.isInteger(r.capacity))&&text(r.host)&&Array.isArray(r.players)&&r.players.every(text)&&text(r.notes)&&Number.isInteger(r.version)&&text(r.updatedAt)))throw new Error('Invalid request.');
+  const lock=LockService.getScriptLock();if(!lock.tryLock(5000))throw fail_('Another player is updating the calendar. Try again.','busy');
+  // A push older than the last one applied would roll the Sheet back, so it is skipped; the same version re-applies.
+  try{last=Number(props.getProperty('mirror_version'))||0;if(p.version>=last){mirror_(tab,p.from,p.rows);SpreadsheetApp.flush();props.setProperty('mirror_version',String(p.version));last=p.version;}}finally{lock.releaseLock();}
+ }
+ const at=Date.now(),v=rosterSheet.getDataRange().getDisplayValues(),col=v[0].findIndex((h,i)=>i>0&&h.trim().toLowerCase()==='officer'),name=r=>r[0].trim();
+ return {ok:true,sheetId:sheetId,roster:v.slice(1).map(name).filter(Boolean),officers:col<0?[]:v.slice(1).filter(r=>name(r)&&/^(yes|y|x|true)$/i.test(r[col].trim())).map(name),mirrored:last,at:at};
+}
+function mirror_(tab,from,rows){
+ // ponytail: reads the whole tab like list does (a hand sort can put window rows anywhere); archive old rows if pushes get slow.
+ const v=tab.getDataRange().getDisplayValues();checkHeaders_(v[0]);
+ // Window rows (an ID and a yyyy-mm-dd date from `from` on) belong to the database; every other row stays exactly as it is.
+ const runs=[];for(let i=1;i<v.length;i++)if(v[i][0]!==''&&/^\d{4}-\d{2}-\d{2}$/.test(v[i][1])&&v[i][1]>=from){const run=runs[runs.length-1];if(run&&run[0]+run[1]===i+1)run[1]++;else runs.push([i+1,1]);}
+ const tail=runs.length&&runs[runs.length-1][0]+runs[runs.length-1][1]-1===v.length?runs.pop():null;
+ // Bottom-up, so rows above a delete keep their position; each run has a kept row below it, so the tab never loses every unfrozen row (Sheets refuses that).
+ let deleted=0;for(let i=runs.length-1;i>=0;i--){tab.deleteRows(runs[i][0],runs[i][1]);deleted+=runs[i][1];}
+ const start=tail?tail[0]-deleted:v.length-deleted+1,n=rows.length,old=tail?tail[1]:0;
+ if(n){
+  const max=tab.getMaxRows(),end=start+n-1;if(end>max)tab.insertRowsAfter(max,end-max+100);
+  tab.getRange(start,2,n,3).setNumberFormats(rows.map(()=>['yyyy-mm-dd','hh:mm','hh:mm']));tab.getRange(start,8,n,2).setWrap(true);
+  tab.getRange(start,1,n,COLUMNS.length).setValues(rows.map(m=>cells_(m.capacity===null?Object.assign({},m,{kind:'practice'}):m,m.updatedAt)));
+ }
+ if(old>n)tab.getRange(start+n,1,old-n,v[0].length).clearContent();
 }
 function equal_(a,b){let mismatch=a.length^b.length;for(let i=0;i<b.length;i++)mismatch|=(a.charCodeAt(i)||0)^b.charCodeAt(i);return mismatch===0;}
 function fail_(message,code){const error=new Error(message);error.code=code;return error;}

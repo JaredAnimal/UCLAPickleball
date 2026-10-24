@@ -8,8 +8,9 @@ import * as admin from './routes/admin';
 import * as auth from './routes/auth';
 import * as login from './routes/login';
 import * as members from './routes/members';
+import {pruneRequests,ensureImported} from './lib/reservation-store';
 import {loadConnection} from './lib/sheet-connection';
-import {refreshCopy} from './lib/reservation-copy';
+import {syncSheet} from './lib/sheet-sync';
 import {deleteExpiredSessions} from './lib/sign-in';
 
 type Handler = (request: Request) => Response | Promise<Response>;
@@ -56,6 +57,7 @@ export default {
   },
   scheduled(_controller: ScheduledController, _env: Cloudflare.Env, ctx: ExecutionContext) {
     ctx.waitUntil(deleteExpiredSessions().catch(error => console.error('Session cleanup failed', error instanceof Error ? error.message : 'Unknown')));
-    ctx.waitUntil(loadConnection().then(connection => connection && refreshCopy(connection)).catch(error => console.error('Scheduled refresh failed', error instanceof Error ? error.message : 'Unknown')));
+    ctx.waitUntil(pruneRequests().catch(error => console.error('Receipt cleanup failed', error instanceof Error ? error.message : 'Unknown')));
+    ctx.waitUntil(loadConnection().then(async c => { if (c) { await ensureImported(c); await syncSheet(c); } }).catch(error => console.error('Scheduled sync failed', error instanceof Error ? error.message : 'Unknown')));
   },
 } satisfies ExportedHandler<Cloudflare.Env>;

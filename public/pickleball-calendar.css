@@ -109,3 +109,4 @@ main.login{max-width:440px}.login-card{padding:24px;animation:rise .32s var(--ea
 /* Keep .sidehead on one line on small phones and in the 340px side column. */
 @media(max-width:430px),(min-width:1101px){.side h3{font-size:18px}.filter{padding:6px 10px}}
 @media(min-width:1101px){.week{position:sticky;top:16px}.dayblock+.dayblock{margin-top:36px}.gh-day{font-size:20px}.gh-date{font-size:15px}}
+.members ul{list-style:none;padding:0;margin:0}.members li{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line,#ddd)}.members li span{min-width:0;overflow-wrap:anywhere}.members li small{color:var(--muted)}.members button{margin:0;min-height:44px}.members h3{margin:18px 0 4px}.members .error p{margin:0 0 6px}dialog.members{max-height:80vh;overflow:auto}#membersOpen{margin-bottom:8px}

@@ -8,11 +8,12 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 - UCLA Google sign-in; members link a roster name once, guests type first and last name, shown with red `[guest]` labels.
 - Reservations default to Sunset Rec; hosts choose additional slots and manage attendees.
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
-- Shared reservations through the existing private Google Sheet and Apps Script bridge.
+- Shared reservations stored in the club's D1 database, copied every minute to the existing private Google Sheet through its Apps Script bridge; the Sheet's Roster tab supplies the roster and the officers.
+- Club officers (marked on the Roster tab) can edit, cancel and remove attendees on every game, and manage Members from the profile menu.
 - Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. After unlocking, the download button opens the Windows EXE installer hosted on GitHub Releases.
 - Separate password-protected owner settings, encrypted connection storage, Google sign-in sessions, and automated checks.
 
-Players sign in with a UCLA Google account (`g.ucla.edu` or `ucla.edu`). A member links one roster name to the account once; a guest types a first and last name, shown with a red `[guest]` marker and reserved for that account. Officers unlink or block accounts in `/admin` → Members. Owner settings use a separate server password and never need Google.
+Players sign in with a UCLA Google account (`g.ucla.edu` or `ucla.edu`). A member links one roster name to the account once; a guest types a first and last name, shown with a red `[guest]` marker and reserved for that account. Officers unlink or block accounts from Members in the profile menu (not other officers); the owner can also use `/admin` → Members. Owner settings use a separate server password and never need Google.
 
 ## Update the automation bot installer
 
@@ -22,11 +23,26 @@ The password-protected `/bot/download` route redirects unlocked visitors to the 
 
 ## Moving from the current site
 
-This is the complete standalone application, not a static HTML export. GitHub stores the source. Cloudflare Workers runs the server and serves the assets. The existing Google Sheet continues to hold reservations and the roster.
+This is the complete standalone application, not a static HTML export. GitHub stores the source. Cloudflare Workers runs the server and serves the assets. D1 now holds the reservations; the existing Google Sheet keeps a copy of them and still holds the roster.
 
 The migration removes Sites-specific hosting and identity dependencies. Owner settings now use `/admin` with a separate `ADMIN_PASSWORD`. No production passwords, shared secrets, club roster names, actual Sheet identifiers, private database records, or Git history are included. Old internship tracker code and data are not included.
 
 Keep the current site available until the replacement has been configured and tested. Uploading this repository alone does not move the live website or its URL.
+
+## How data flows
+
+- D1 is the source of truth for reservations. Every save is checked by the Worker (`src/lib/reservation-rules.ts`) and written to D1 without calling Google.
+- Each minute a cron rewrites the Sheet's Reservations tab from D1 for rows dated yesterday (Pacific) or later. Older rows are left untouched. Saves also push to the Sheet right after they land; the minute job catches up anything missed.
+- Change games on the site, not in the Sheet: officers have edit, cancel and remove on every game. Edits in the Sheet's Reservations tab (yesterday on) are overwritten at the next save.
+- Keep the Reservations tab's header row, column order and Date format (`yyyy-mm-dd`). The copy finds its rows by an ID in column A and a `yyyy-mm-dd` date in column B; a reformatted date hides a row from the copy, so it goes stale and a fresh copy is added below it. Sorting the tab is fine.
+- The same minute the Worker reads the Roster tab and its `Officer` column back into D1. A roster that is empty, or under half the size of the last one, is refused until an officer chooses "Use the new roster".
+- Page loads read one snapshot row from D1. Calendar replies carry the roster size, never roster names; only Members (officers and the owner) lists them.
+
+## Roster and officers
+
+Add or remove players in column A of the Roster tab (header in row 1, one name per row). New names can sign in within a minute; a removed member goes back to the name step on their next visit. If the new list is empty or under half the size of the current one (for example a shorter roster for a new season), the site keeps the old one, and Members shows 'Use the new roster' to officers and to the owner at `/admin` → Members. The owner can always accept, even when the officers changed.
+
+Add a column to the Roster tab with the header `Officer` and type `yes` beside each officer. It takes effect within a minute. Officers see edit, cancel and remove on every game, plus Members in the profile menu. Whoever links an officer's name gets officer powers.
 
 ## Local development
 
@@ -49,12 +65,12 @@ Run all checks:
 pnpm check
 ```
 
-This type-checks the Worker, tests the Apps Script reservation rules and calendar dates, bundles the Worker without deploying, and exercises the compiled Worker APIs in Miniflare. The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests.
+This type-checks the Worker, tests the Worker's reservation rules (`scripts/validate-rules.mjs`), the Apps Script copy, roster and rule actions and the calendar dates in a VM, bundles the Worker without deploying, and exercises the compiled Worker APIs in Miniflare. The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests.
 
 ## One-time Cloudflare setup
 
 1. Sign in to your own Cloudflare account. Authorize Wrangler locally with `pnpm exec wrangler login`.
-2. Create the connection-settings database:
+2. Create the club database (reservations, roster copy, sign-in and settings):
 
    ```sh
    pnpm exec wrangler d1 create ucla-club-pickleball
@@ -109,7 +125,7 @@ Finish all five steps **before merging**: the app published, the production redi
 1. Visit the new website's `/admin` page and enter the new owner password.
 2. At `/connect-sheet`, paste the **existing** Apps Script web-app URL ending in `/exec` and its connection secret. The secret is in the Apps Script project's **Project Settings → Script Properties → API_SECRET**.
 3. Select **Verify & connect**. The server checks the API version, expected spreadsheet ID, and roster before encrypting and saving the connection.
-4. Reuse the existing Google deployment. Do not replace its code, run `setup`, or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a portable source copy for future changes or new setup. Its private spreadsheet ID comes from an owner-set `SPREADSHEET_ID` Script Property when present, otherwise from the spreadsheet the script is bound to; it is not embedded in source.
+4. Reuse the existing Google deployment. Reconnecting keeps the D1 data, and the next minute re-copies the window to the Sheet. When the `.gs` changes, deploy a new version of the same deployment (the URL stays). Do not run `setup` or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a portable source copy for future changes or new setup. Its private spreadsheet ID comes from an owner-set `SPREADSHEET_ID` Script Property when present, otherwise from the spreadsheet the script is bound to; it is not embedded in source.
 
 The expected Sheet ID is configured privately with `SHEETS_SPREADSHEET_ID`. Roster names come from the connected Sheet at runtime; none are embedded in this repository. The sheet stays private. The web app executes as its Google owner and checks the shared secret on every data request. Neither the shared secret nor the runtime keys are returned to calendar visitors.
 
@@ -121,7 +137,7 @@ Merging to `main` updates the website only. Changes to `src/lib/pickleball-apps-
 2. Replace the code in `Code.gs` with the file's contents and save.
 3. Open **Deploy → Manage deployments**, select the active deployment, click the pencil, set **Version** to **New version**, and select **Deploy**.
 
-The web-app URL and secret stay the same, so the website needs no change. Do not run `setup` for an update.
+The web-app URL and secret stay the same, so the website needs no change. Do not run `setup` for an update. The script version with the `sync` action is required: without it the minute copy and the roster read fail and Members shows the error.
 
 ## Set up a new Sheet (testing or a fresh start)
 
@@ -156,29 +172,48 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 
 ## Before switching the shared link
 
-- Confirm shared reservations load from the existing Sheet.
+- Confirm shared reservations load (the first request imports them from the Sheet) and the Reservations tab matches after a minute.
 - With approved test names, check host creation/removal and member/guest joins, then remove any test reservations.
 - Confirm guests cannot join practice and practice capacity is unlimited.
 - Check the bot page password, owner settings protection, and phone layout.
 - On a phone, sign in as a member and as a guest, then sign out.
 - Change the destination of the shared short link only after the new deployment works. Keep the old site until cutover is complete.
 
+## Switch-over
+
+1. Apply `0003` to remote D1 (`pnpm db:remote`). It only adds tables and indexes, so the live code keeps working.
+2. Deploy the script version with `sync` (see Update the Google script). Its old actions are unchanged.
+3. Just before merging, press Refresh on the live calendar. The old code reads the Sheet, so a clean load means Google is answering. The first request after the deploy imports rows dated yesterday or later from the Sheet; if Google fails at that moment, the calendar shows 'temporarily unavailable' until it answers (it retries every minute).
+4. Merge at a quiet hour. Workers Builds deploys about 1–2 minutes after the merge: wait for it to finish, and make no saves from the merge until a minute after the deploy finishes (the outgoing Worker still writes the Sheet for a few seconds).
+5. After the deploy, load the calendar (this runs the import). Then check with read-only commands: `pnpm exec wrangler d1 execute DB --remote --command "SELECT version FROM data_version"` and `... --command "SELECT json_extract(value,'$.okAt') FROM app_settings WHERE key='sheet_sync'"` (the second number should advance every minute). Check the Reservations tab updates within a minute after a test save, and as owner check `/admin` → Members shows no sync error. An officer sees edit and cancel on others' games within a minute.
+6. Rollback:
+   - In Members, check the Sheet copy is not behind, then wait a minute with no saves.
+   - Revert the PR; the old code reads the Sheet copy with `list`. Keep the new script version; its old actions serve the reverted code.
+   - On the remote D1 run `DELETE FROM app_settings WHERE key='reservations_copy';` so the old code can write its copy again.
+7. Roll forward after a rollback, before merging again: `DELETE FROM reservations; DELETE FROM requests; DELETE FROM app_settings WHERE key IN ('reservations_imported','reservations_copy','sheet_sync','roster');` so the next request re-imports from the Sheet.
+
+D1 Time Travel keeps 7 days of history on the free plan (`wrangler d1 time-travel restore`) if D1 data ever needs restoring; the next minute re-copies the Sheet window.
+
 ## Source map
 
 | File | Purpose |
 | --- | --- |
-| `src/worker.ts` | HTTP routes, static asset serving, and the scheduled handler that refreshes the Sheet copy every minute |
+| `src/worker.ts` | HTTP routes, static asset serving, and the scheduled handler that runs the minute sync |
 | `src/pages/calendar.html` | Calendar page and forms |
 | `public/pickleball-calendar.js` / `.css` | Calendar behavior and responsive styles |
 | `src/routes/` | Reservation, owner setup, and bot handlers |
+| `src/lib/reservation-rules.ts` | The reservation and host/officer rules the Worker enforces |
+| `src/lib/reservation-store.ts` | Reservations in D1: saves, receipts, data version, snapshot, first import |
+| `src/lib/sheet-sync.ts` | Minute cron: copies reservations to the Sheet, reads the roster and officers back |
+| `public/pickleball-members.js` | Members dialog in the profile menu |
 | `src/routes/auth.ts` | Google sign-in start, callback, name step, and sign-out |
 | `src/routes/login.ts` / `src/pages/login.html` / `public/pickleball-login.js` | The `/login` page |
 | `public/privacy.html` | Public privacy page, linked from the sign-in page and Google's consent screen |
-| `src/routes/members.ts` | Owner-only Members list API (unlink, block, unblock) |
+| `src/routes/members.ts` | Members API for the owner or an officer: list, unlink, block, unblock, accept a refused roster, Sheet sync health |
 | `src/lib/sign-in.ts` | Sessions, roster matching, and link helpers |
-| `src/lib/reservation-copy.ts` | Copy of the latest confirmed Sheet response in D1, so the calendar loads instantly |
 | `src/lib/sheet-connection.ts` | Verified Google bridge and encrypted configuration |
 | `src/lib/admin-access.ts` | Owner password sessions and login throttling |
 | `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
-| `migrations/` | D1 schema for settings (including the reservations copy), owner login throttling, and sign-in sessions, links and blocked accounts |
+| `scripts/` | Worker rules tests, Apps Script and calendar VM tests, Miniflare API tests |
+| `migrations/` | D1 schema for settings, owner login throttling, sign-in sessions, links and blocked accounts, and (`0003`) reservations, receipts, the data version and sync state |

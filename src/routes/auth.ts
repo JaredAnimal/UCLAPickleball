@@ -34,9 +34,9 @@ export async function callback(request:Request){
  if(!HD.includes(claims.hd))return refuse('account','hd',claims.hd??'none');
  const sub=claims.sub as string,email=(claims.email as string).toLowerCase();
  if(await database().prepare('SELECT 1 FROM blocked WHERE sub=?').bind(sub).first())return refuse('blocked','blocked');
- // Linked member: the name must still be on the roster (stored with the roster's spelling); guests and unlinked accounts go to the name step.
+ // Linked member: the name must still be on the roster (stored with the roster's spelling; before the first roster arrives the link is kept, as in calendar.ts); guests and unlinked accounts go to the name step.
  const link=await database().prepare('SELECT kind,player FROM links WHERE sub=?').bind(sub).first<{kind:string;player:string}>();
- const player=link?.kind==='member'?(m=>m==='duplicate'?null:m)(linkedName(link.player,(await rosterNames())||[])):null;
+ const roster=link?.kind==='member'?await rosterNames():null,player=link?.kind==='member'?roster?(m=>m==='duplicate'?null:m)(linkedName(link.player,roster)):link.player:null;
  // A session already in this browser's cookie is ended, not left valid behind the new one.
  await endSession(request);
  return go(303,player?'/':'/login',await createSession(sub,email,player),oauthCookie('',0));
