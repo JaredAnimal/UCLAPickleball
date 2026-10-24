@@ -1,5 +1,6 @@
 import {waitUntil} from 'cloudflare:workers';
 import {database} from './database';
+import {invokeSheet,type SheetConnection} from './sheet-connection';
 import {decide,fingerprint,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
 // D1 is the source of truth (migrations/0003). Every applied change bumps data_version; the reservations_copy row is the snapshot page loads read.
 export type Roster={names:string[];officers:string[];at:number;refused?:{names:string[];officers:string[];at:number}};
@@ -41,6 +42,16 @@ export async function applyRequest(req:ReservationRequest,player:string):Promise
   if(w.meta.changes===1){const p=buildSnapshot();waitUntil(p.catch(()=>{}));return {snapshot:await p,wrote:true};}
  }
  throw Object.assign(new RuleError(MSG.busy),{busy:true});
+}
+// First run only: copy the Sheet's current rows (yesterday on, already tidied by invokeSheet) into D1. OR IGNORE and DO NOTHING make two concurrent first runs harmless.
+// ponytail: one flag read per save, no memo; a table that already has rows only gets the flag.
+export async function ensureImported(connection:SheetConnection):Promise<void>{
+ const d=database(),s:any=await d.prepare("SELECT (SELECT 1 FROM app_settings WHERE key='reservations_imported') AS done,(SELECT 1 FROM reservations LIMIT 1) AS rows").first(),flag=(rows:number)=>d.prepare("INSERT INTO app_settings (key,value) VALUES ('reservations_imported',?) ON CONFLICT(key) DO NOTHING").bind(JSON.stringify({at:Date.now(),rows}));
+ if(s.done)return;if(s.rows){await flag(0).run();return;}
+ const {matches,roster}=await invokeSheet(connection,{action:'list'}),t=Date.now();
+ await d.batch([d.prepare("INSERT OR IGNORE INTO reservations (id,date,start_time,end_time,court,capacity,host,players,notes,version,updated_at,updated_by) SELECT json_extract(value,'$.id'),json_extract(value,'$.date'),json_extract(value,'$.start'),json_extract(value,'$.end'),json_extract(value,'$.court'),json_extract(value,'$.capacity'),json_extract(value,'$.host'),json_extract(value,'$.players'),COALESCE(json_extract(value,'$.notes'),''),json_extract(value,'$.version'),?,'import' FROM json_each(?)").bind(t,JSON.stringify(matches)),
+  ...roster.length?[d.prepare("INSERT INTO app_settings (key,value) VALUES ('roster',?) ON CONFLICT(key) DO NOTHING").bind(JSON.stringify({names:roster,officers:[],at:t}))]:[],
+  d.prepare('UPDATE data_version SET version=version+1 WHERE id=1'),flag(matches.length)]);
 }
 // ponytail: receipts live 7 days; a re-send after that would apply again (the client re-sends within seconds).
 export async function pruneRequests():Promise<void>{await database().prepare('DELETE FROM requests WHERE at < ?').bind(Date.now()-7*864e5).run();}
