@@ -30,7 +30,7 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 - Do not embed real roster names, spreadsheet IDs, owner email addresses, or deployment URLs in public repository files. Use synthetic fixtures in tests and private runtime configuration for the Sheet.
 - Public players must never receive the connection secret, encryption key, bot password, or owner password.
 - Owner settings use `/admin`, an independent password, signed HttpOnly cookies, and login throttling. Do not trust caller-supplied Sites identity headers on this standalone host. `/admin` stays password-only and never needs Google.
-- Preserve the current Google Sheet and Apps Script deployment. Do not run Google `setup` or rotate the shared secret for routine website changes.
+- Preserve the current Google Sheet and Apps Script deployment: when the `.gs` changes, deploy a new version of the same deployment (the URL stays). Do not run Google `setup` or rotate the shared secret for routine website changes.
 - D1 is the source of truth for reservations, receipts, the data version, the snapshot (the one row page loads read), the roster and the sync state. It also stores settings, login throttling, sessions, links (account to roster name) and blocked accounts.
 - The Sheet's Reservations tab is a one-way copy, rewritten every minute (`src/lib/sheet-sync.ts`) for rows dated yesterday (Pacific) or later. Hand edits there are overwritten; older rows are left untouched.
 - The roster is read from the Roster tab every minute. A roster that is empty, or under half the size of the last one, is refused until an officer chooses "Use the new roster".

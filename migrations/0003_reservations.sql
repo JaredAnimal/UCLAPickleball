@@ -3,6 +3,9 @@ CREATE TABLE reservations (id TEXT PRIMARY KEY NOT NULL, date TEXT NOT NULL, sta
 CREATE INDEX reservations_date ON reservations (date);
 -- One receipt per applied save, so a re-sent request id replays instead of applying twice. Pruned after 7 days.
 CREATE TABLE requests (request_id TEXT PRIMARY KEY NOT NULL, fingerprint TEXT NOT NULL, at INTEGER NOT NULL);
+-- The minute cron prunes by age; without these indexes each run scans the whole table.
+CREATE INDEX requests_at ON requests (at);
+CREATE INDEX sessions_expires ON sessions (expires_at);
 -- Bumped by every applied change (a save, the import, an accepted roster); the snapshot and the Sheet copy carry it.
 CREATE TABLE data_version (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
 INSERT INTO data_version (id, version) VALUES (1, 0);

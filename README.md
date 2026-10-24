@@ -121,7 +121,7 @@ Finish all five steps **before merging**: the app published, the production redi
 1. Visit the new website's `/admin` page and enter the new owner password.
 2. At `/connect-sheet`, paste the **existing** Apps Script web-app URL ending in `/exec` and its connection secret. The secret is in the Apps Script project's **Project Settings → Script Properties → API_SECRET**.
 3. Select **Verify & connect**. The server checks the API version, expected spreadsheet ID, and roster before encrypting and saving the connection.
-4. Reuse the existing Google deployment. Reconnecting keeps the D1 data, and the next minute re-copies the window to the Sheet. Do not replace its code, run `setup`, or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a portable source copy for future changes or new setup. Its private spreadsheet ID comes from an owner-set `SPREADSHEET_ID` Script Property when present, otherwise from the spreadsheet the script is bound to; it is not embedded in source.
+4. Reuse the existing Google deployment. Reconnecting keeps the D1 data, and the next minute re-copies the window to the Sheet. When the `.gs` changes, deploy a new version of the same deployment (the URL stays). Do not run `setup` or rotate its secret merely because the website moved. `src/lib/pickleball-apps-script.gs` is included as a portable source copy for future changes or new setup. Its private spreadsheet ID comes from an owner-set `SPREADSHEET_ID` Script Property when present, otherwise from the spreadsheet the script is bound to; it is not embedded in source.
 
 The expected Sheet ID is configured privately with `SHEETS_SPREADSHEET_ID`. Roster names come from the connected Sheet at runtime; none are embedded in this repository. The sheet stays private. The web app executes as its Google owner and checks the shared secret on every data request. Neither the shared secret nor the runtime keys are returned to calendar visitors.
 
@@ -179,8 +179,12 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 
 1. Apply `0003` to remote D1 (`pnpm db:remote`) before the deploy.
 2. Deploy the script version with `sync`.
-3. Merge at a quiet hour; the first request imports rows dated yesterday or later.
-4. Rollback = revert the PR; the old code reads the Sheet copy with `list`.
+3. Merge at a quiet hour, and make no saves for a minute around the merge: the outgoing Worker still writes the Sheet for a few seconds. The first request imports rows dated yesterday or later.
+4. Rollback:
+   - In Members, check the Sheet copy is not behind, then wait a minute with no saves.
+   - Revert the PR; the old code reads the Sheet copy with `list`.
+   - On the remote D1 run `DELETE FROM app_settings WHERE key='reservations_copy';` so the old code can write its copy again.
+5. Roll forward after a rollback, before merging again: `DELETE FROM reservations; DELETE FROM requests; DELETE FROM app_settings WHERE key IN ('reservations_imported','reservations_copy','sheet_sync','roster');` so the next request re-imports from the Sheet.
 
 ## Source map
 
