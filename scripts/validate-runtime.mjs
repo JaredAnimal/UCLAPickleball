@@ -76,7 +76,7 @@ passed('the installer download route requires a valid bot session');
 response=await publicCall('/bot',{headers:{Cookie:cookie}});
 {const html=await response.text();assert.ok(html.includes('Windows only.'));assert.ok(html.includes('>.EXE</span>'));assert.ok(!html.includes('>.ZIP</span>'));assert.ok(html.indexOf('id="downloadDisclaimer"')>html.indexOf('</button>'));}
 response=await publicCall('/bot/download',{headers:{Cookie:cookie}});
-const installerUrl='https://github.com/JaredAnimal/UCLAPickleball/releases/download/picklebot-v0.2.2/Picklebot-Setup-0.2.2.exe';
+const installerUrl='https://github.com/JaredAnimal/UCLAPickleball/releases/download/picklebot-v0.2.4/Picklebot-Setup-0.2.4.exe';
 assert.equal(response.status,302);assert.equal(response.headers.get('location'),installerUrl);assert.match(response.headers.get('cache-control'),/private, no-store/);
 assert.equal(await response.text(),'');
 response=await publicCall('/bot/download',{method:'HEAD',headers:{Cookie:cookie}});assert.equal(response.status,302);
