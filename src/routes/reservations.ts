@@ -7,9 +7,9 @@ import {syncSoon} from '../lib/sheet-sync';
 const MAX_OTHER_PLAYERS=7;
 const DOWN='The calendar is temporarily unavailable. Please retry.';
 // Rows dated before yesterday (Pacific) stay in D1 but never reach players, even from a snapshot stored before midnight.
-const reply=(s:Snapshot)=>{const from=laYesterday();return {...s.data,matches:s.data.matches.filter(m=>m.date>=from),configured:true};};
+const reply=(s:Snapshot,player:string)=>{const from=laYesterday();return {...s.data,matches:s.data.matches.filter(m=>m.date>=from),configured:true,officer:s.officers.includes(player)};};
 export async function GET(request:Request){
- try{if(!(await readSession(request))?.player)return json({error:'Sign in to see reservations.'},401);const s=new URL(request.url).searchParams.get('fresh')==='1'?null:await readSnapshot();if(s)return json(reply(s));const c=await loadConnection();if(!c)return json({configured:false,roster:ROSTER,matches:[]});await ensureImported(c);return json(reply(await buildSnapshot()));}
+ try{const player=(await readSession(request))?.player;if(!player)return json({error:'Sign in to see reservations.'},401);const s=new URL(request.url).searchParams.get('fresh')==='1'?null:await readSnapshot();if(s)return json(reply(s,player));const c=await loadConnection();if(!c)return json({configured:false,roster:ROSTER,matches:[]});await ensureImported(c);return json(reply(await buildSnapshot(),player));}
  catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:DOWN},503);}
 }
 export async function POST(request:Request){
@@ -28,6 +28,6 @@ export async function POST(request:Request){
  // Nothing is written if the import fails, so no uncertain flag: the client rolls the change back.
  try{await ensureImported(connection);}catch(error){console.error('Reservation import failed',error instanceof Error?error.message:'Unknown');return json({error:DOWN},503);}
  // A rule rejection applied nothing; any other failure may have landed, and the receipt makes the client's one re-send safe.
- try{const {snapshot,wrote}=await applyRequest(p,player);if(wrote)syncSoon();return json(reply(snapshot));}catch(error){if(!(error instanceof RuleError))throw error;return json({error:error.message,...((error as {busy?:boolean}).busy?{busy:true}:{}),...reply(await buildSnapshot())},409);}
+ try{const {snapshot,wrote}=await applyRequest(p,player);if(wrote)syncSoon();return json(reply(snapshot,player));}catch(error){if(!(error instanceof RuleError))throw error;return json({error:error.message,...((error as {busy?:boolean}).busy?{busy:true}:{}),...reply(await buildSnapshot(),player)},409);}
  }catch(error){console.error('Reservation write failed',error instanceof Error?error.name:'Unknown');return json({error:DOWN,uncertain:true},503);}
 }

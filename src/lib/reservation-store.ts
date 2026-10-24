@@ -33,8 +33,8 @@ export async function applyRequest(req:ReservationRequest,player:string):Promise
  for(let n=0;n<4;n++){
   const [receipt,row,roster]=(await d.batch<any>([d.prepare('SELECT fingerprint FROM requests WHERE request_id=?').bind(req.requestId),d.prepare('SELECT * FROM reservations WHERE id=?').bind(id),d.prepare(ROSTER_SQL)])).map(x=>x.results[0]);
   if(receipt){if(receipt.fingerprint!==fp)throw new RuleError(MSG.retryDifferent);return {snapshot:await buildSnapshot(),wrote:false};}
-  const names=(parse(roster) as Roster|null)?.names;if(!names?.length)throw new RuleError(ROSTER_DOWN);
-  const current=row&&(create||row.cancelled_at===null)?toReservation(row):null,out=decide(req,current,{now:laNow(),roster:names,officer:false});
+  const rost=parse(roster) as Roster|null,names=rost?.names;if(!names?.length)throw new RuleError(ROSTER_DOWN);
+  const current=row&&(create||row.cancelled_at===null)?toReservation(row):null,out=decide(req,current,{now:laNow(),roster:names,officer:!!rost?.officers?.includes(player)});
   if(out.kind==='none')return {snapshot:await buildSnapshot(),wrote:false};
   const [w]=await d.batch([write(out,current?.version,player),d.prepare('INSERT INTO requests (request_id,fingerprint,at) SELECT ?,?,? WHERE changes()=1').bind(req.requestId,fp,Date.now()),d.prepare('UPDATE data_version SET version=version+1 WHERE id=1 AND changes()=1')]);
   // reservations must never get a trigger that writes: its changes would count here and a lost race would look applied.
