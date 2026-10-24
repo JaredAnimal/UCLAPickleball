@@ -56,6 +56,12 @@ export function decide(req:ReservationRequest,current:Reservation|null,ctx:{now:
  next.version++;
  return {kind:action==='cancel'?'cancel':fresh?'insert':'update',match:next};
 }
+// The roster guard: a blank or mostly emptied Sheet roster never replaces the last good one.
+export function rosterVerdict(next:{names:string[];officers:string[]},last:{names:string[];officers:string[]}|null):'same'|'accept'|'refuse'{
+ if(!next.names.length)return 'refuse';
+ if(last&&JSON.stringify([next.names,next.officers])===JSON.stringify([last.names,last.officers]))return 'same';
+ return last&&next.names.length*2<last.names.length?'refuse':'accept';
+}
 // Same digest as the script, so a retry is recognised across both paths.
 export async function fingerprint(req:ReservationRequest):Promise<string>{
  const {action,player,id,expectedVersion,reservation,target}=req;

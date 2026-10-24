@@ -3,6 +3,7 @@ import {ROSTER} from '../lib/pickleball-config';
 import {readSession} from '../lib/sign-in';
 import {readSnapshot,buildSnapshot,applyRequest,ensureImported,type Snapshot} from '../lib/reservation-store';
 import {RuleError,laYesterday} from '../lib/reservation-rules';
+import {syncSoon} from '../lib/sheet-sync';
 const MAX_OTHER_PLAYERS=7;
 const DOWN='The calendar is temporarily unavailable. Please retry.';
 // Rows dated before yesterday (Pacific) stay in D1 but never reach players, even from a snapshot stored before midnight.
@@ -27,6 +28,6 @@ export async function POST(request:Request){
  // Nothing is written if the import fails, so no uncertain flag: the client rolls the change back.
  try{await ensureImported(connection);}catch(error){console.error('Reservation import failed',error instanceof Error?error.message:'Unknown');return json({error:DOWN},503);}
  // A rule rejection applied nothing; any other failure may have landed, and the receipt makes the client's one re-send safe.
- try{return json(reply((await applyRequest(p,player)).snapshot));}catch(error){if(!(error instanceof RuleError))throw error;return json({error:error.message,...((error as {busy?:boolean}).busy?{busy:true}:{}),...reply(await buildSnapshot())},409);}
+ try{const {snapshot,wrote}=await applyRequest(p,player);if(wrote)syncSoon();return json(reply(snapshot));}catch(error){if(!(error instanceof RuleError))throw error;return json({error:error.message,...((error as {busy?:boolean}).busy?{busy:true}:{}),...reply(await buildSnapshot())},409);}
  }catch(error){console.error('Reservation write failed',error instanceof Error?error.name:'Unknown');return json({error:DOWN,uncertain:true},503);}
 }
