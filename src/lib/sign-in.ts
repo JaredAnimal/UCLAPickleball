@@ -1,7 +1,6 @@
 import {database} from './database';
-import {loadConnection} from './sheet-connection';
 import {normalize} from './player-session';
-import {readCopy,refreshCopy} from './reservation-copy';
+import {readRoster} from './reservation-store';
 
 export type Session={hash:string;sub:string;email:string;player:string|null;expiresAt:number;renewedAt:number};
 export const SESSION_COOKIE='__Host-pb_s';
@@ -30,14 +29,8 @@ export async function endSession(request:Request):Promise<string>{
  return cookie('',0);
 }
 export async function deleteExpiredSessions():Promise<void>{await database().prepare('DELETE FROM sessions WHERE expires_at<=?').bind(now()).run();}
-// Roster from the D1 copy (null with no Sheet connected), refreshed from the Sheet when missing or older than 5 minutes (as the old player-session did); null when none can be had or it is empty.
-export async function rosterNames():Promise<string[]|null>{
- try{
-  const connection=await loadConnection();if(!connection)return null;
-  const copy=await readCopy(),roster=copy&&Date.now()-copy.savedAt<=300000?copy.data.roster:await refreshCopy(connection).then(c=>c.data.roster,()=>copy?.data.roster);
-  return roster?.length?roster:null;
- }catch{return null;}
-}
+// The roster stored in D1; null when there is none or it is empty. Never calls Google.
+export async function rosterNames():Promise<string[]|null>{try{const names=(await readRoster())?.names;return names?.length?names:null;}catch{return null;}}
 // The one roster spelling whose key matches; 'duplicate' when two different spellings share the key (an identical repeated row is one name), null when none.
 export function rosterMatch(name:string,roster:string[]):string|'duplicate'|null{const k=normalize(name),m=[...new Set(roster.filter(n=>normalize(n)===k))];return m.length>1?'duplicate':m[0]??null;}
 // An already-linked member whose exact spelling is still on the roster keeps it, even if another spelling now shares its key.
