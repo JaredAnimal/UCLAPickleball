@@ -22,6 +22,7 @@ export type SheetResult={ok:true;apiVersion:2;matches:Reservation[];roster:strin
 const SLOW='Google Sheets took too long to respond. Refresh to check whether your change saved.';
 const READ_SLOW='Google Sheets is slow right now. Try again in a moment.';
 const BUSY='Another player is updating the calendar. Try again.';
+const READ_BUSY='Google Sheets is busy right now. Try again in a moment.';
 // The script's own ok:false messages (pickleball-apps-script.gs): rejections are thrown before any change and are safe to show players; config errors are the owner's setup problems. "The retry contains different data" is left out: its receipt proves an earlier send applied.
 // ponytail: exact match on Version 5's wording, which sends no code; Version 6 replies carry a code that wins. Drop the lists once Version 5 is gone.
 const REJECTIONS=[BUSY,'Choose a club player or enter a guest name.','Club practice is NOT open to guests.','Practice IDs are reserved.','This practice has ended.','Weekly club practices cannot be edited or canceled.','Reservation ID already exists.','This reservation no longer exists. Refresh the calendar.','Only the host can change this match or remove players.','This match has already started.','This match changed while you were editing. Refresh before saving.','Capacity cannot be lower than the current signup count.','You are already the host.','The last spot has been filled. Refresh the calendar.','Choose an attendee to remove.','Choose a valid date.','End time must be after start time.','Choose a future start time.','Check the location and notes.','Choose up to 7 other players (8 on the court).'];
@@ -46,14 +47,14 @@ async function attempt(connection:SheetConnection,action:string,body:string,n:nu
 const landed=(action:string,message:string)=>Object.assign(new Error(message),action==='list'?{}:{uncertain:true});
 // Every action shares the attempt, retry and classify loop and the apiVersion and sheet checks.
 async function callScript(connection:SheetConnection,payload:Record<string,unknown>):Promise<Record<string,unknown>>{
- const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret}),sheetId=expectedSheetId(),deadline=Date.now()+(Number(env.SHEET_DEADLINE_MS)||20000);let data:Record<string,unknown>,last:any,unknown=false;
+ const action=String(payload.action),body=JSON.stringify({...payload,secret:connection.secret}),sheetId=expectedSheetId(),deadline=Date.now()+(Number(env.SHEET_DEADLINE_MS)||20000);const read=action==='list'||action==='sync';let data:Record<string,unknown>,last:any,unknown=false;
  const fail=(message:string,safe:boolean,busy=false)=>Object.assign(new Error(message),busy?{busy:true}:{},unknown?{uncertain:true,safe}:safe?{rejected:true}:{});
  for(let n=1;;n++){
   if(n===2&&last?.name!=='TimeoutError')await new Promise(r=>setTimeout(r,300+Math.random()*500));
   let reply:Record<string,unknown>|undefined;try{reply=await attempt(connection,action,body,n,Math.max(0,Math.min(Number(env.SHEET_TIMEOUT_MS)||10000,deadline-Date.now())));}catch(error:any){if(error.signin)throw fail(error.message,false);unknown=true;last=error;}
   if(reply?.ok===true){data=reply;break;}
-  if(reply){const message=typeof reply.error==='string'?reply.error.replaceAll(sheetId,'[sheet]').slice(0,300):'Google Sheets did not confirm the update.',kind=typeof reply.code==='string'&&['rejected','busy','config','internal'].includes(reply.code)?reply.code:classify(message);if(kind==='internal'){unknown=true;last=new Error(message);}else if(kind!=='busy'||n===2)throw Object.assign(fail(kind==='busy'?BUSY:message,kind!=='config',kind==='busy'),kind==='rejected'&&!unknown&&reply.sheetId===sheetId&&shaped(reply)?{data:tidy(reply)}:{});else last=new Error(BUSY);}
-  if(n===2)throw Object.assign(new Error(last.name==='TimeoutError'?(action==='list'?READ_SLOW:SLOW):last.message),{uncertain:true,safe:last.name==='TimeoutError'});
+  if(reply){const message=typeof reply.error==='string'?reply.error.replaceAll(sheetId,'[sheet]').slice(0,300):'Google Sheets did not confirm the update.',kind=typeof reply.code==='string'&&['rejected','busy','config','internal'].includes(reply.code)?reply.code:classify(message);if(kind==='internal'){unknown=true;last=new Error(message);}else if(kind!=='busy'||n===2)throw Object.assign(fail(kind==='busy'?read?READ_BUSY:BUSY:message,kind!=='config',kind==='busy'),kind==='rejected'&&!unknown&&reply.sheetId===sheetId&&shaped(reply)?{data:tidy(reply)}:{});else last=new Error(read?READ_BUSY:BUSY);}
+  if(n===2)throw Object.assign(new Error(last.name==='TimeoutError'?(read?READ_SLOW:SLOW):last.message),{uncertain:true,safe:last.name==='TimeoutError'});
  }
  if(data.apiVersion!==2)throw landed(action,'Update the Google connection script from Connect Google Sheet, then deploy a new version of the existing web app.');
  if(data.sheetId!==sheetId)throw landed(action,'This connection points to a different spreadsheet.');

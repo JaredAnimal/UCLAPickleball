@@ -335,7 +335,7 @@ await guestLink('login-xss','Jamie </script><b>Visitor [guest]','guest:login xss
 for(const [body,to] of [['next=google','/auth/google'],['','/login'],['next=Google','/login'],['next=https%3A%2F%2Fevil.invalid','/login'],['next=google&next=x','/auth/google']]){s=await googleSignIn({sub:'login-next'});response=await publicCall('/auth/logout',{method:'POST',signedOut:true,headers:{Cookie:s.cookie,Origin:'https://calendar.invalid','Content-Type':'application/x-www-form-urlencoded'},body});assert.equal(response.status,303,body);assert.equal(response.headers.get('location'),to,body);assert.equal(response.headers.get('set-cookie'),'__Host-pb_s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax');assert.equal((await sessions('login-next')).length,0,body);}
 response=await publicCall('/auth/logout',{method:'POST',signedOut:true,headers:{Origin:'https://calendar.invalid','Content-Length':'1001'},body:'next=google'+'x'.repeat(990)});assert.equal(response.status,303);assert.equal(response.headers.get('location'),'/login');passed('Use a different account (next=google) signs out and restarts Google; any other next lands on /login');
 }finally{quiet=false;}}
-// Officers' Members list: owner-only GET/POST on /api/members.
+// Members list: the owner and officers use GET/POST on /api/members.
 {quiet=true;try{
 await putRoster(['Mem One','Mem Two']);
 const mem=(b,o={})=>call('/api/members',{method:'POST',headers:{'Content-Type':'application/json',...o.headers},body:typeof b==='string'?b:JSON.stringify(b)}),list=async()=>(await call('/api/members')).json();
@@ -362,6 +362,53 @@ assert.equal((await mem({action:'unblock',sub:'n-mm2'})).status,200);assert.ok(!
  await putRoster(['MEM  three']);let r=await row('n-mm3');assert.equal(r.rosterName,'MEM  three');assert.equal(r.onRoster,true);
  await putRoster(['Mem Three','mem three']);r=await row('n-mm3');assert.equal(r.rosterName,null);assert.equal(r.onRoster,false);assert.equal((await row('n-mmx')).onRoster,null);await seedRoster();}
 passed('officers can list, unlink, block and unblock members');
+// Officers open Members in the app (no password): the roster's officer list decides; officers cannot touch other officers.
+{const as=(who,path,o={})=>publicCall(path,{signedOut:true,...o,headers:{Cookie:'__Host-pb_s='+who.token,'Content-Type':'application/json',...o.headers}}),post=(who,b)=>as(who,'/api/members',{method:'POST',body:JSON.stringify(b)}),ownerPost=b=>mem(b),
+ link=(sub,player,kind='member')=>db.prepare('INSERT OR REPLACE INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?)').bind(sub,kind,player,kind+':'+player.toLowerCase(),sub+'@g.ucla.edu',5).run(),has=async sub=>!!(await linkOf(sub)),blockedHas=async sub=>!!(await db.prepare('SELECT 1 x FROM blocked WHERE sub=?').bind(sub).first()),
+ clean=()=>db.batch([db.prepare("DELETE FROM links WHERE sub LIKE 'of-%'"),db.prepare("DELETE FROM blocked WHERE sub LIKE 'of-%'")]);
+ const off=await login('Casey Example'),plain=await login('Drew Example'),guest=await login('Jamie Visitor [guest]'),gone=await login('Nobody Example');
+ await putRoster(['Alex Example','Blair Example','Casey Example','Drew Example'],['Casey Example']);
+ // Officer sessions can open Members; non-officer members, guests and signed-out visitors get 403; the owner still can.
+ for(const [who,label] of [[plain,'non-officer member'],[guest,'guest'],[gone,'name off the roster']]){for(const r of [await as(who,'/api/members'),await post(who,{action:'unlink',sub:'of-x'})]){assert.equal(r.status,403,label);assert.deepEqual(await r.json(),{error:'Only club officers and the site owner can manage members.'});}}
+ assert.equal((await publicCall('/api/members',{signedOut:true})).status,403);assert.equal((await call('/api/members')).status,200);
+ response=await as(off,'/api/members');assert.equal(response.status,200);d=await response.json();assert.equal(d.viewer,'officer');assert.equal((await (await call('/api/members')).json()).viewer,'owner');
+ assert.equal((await as(off,'/api/members',{method:'POST',body:'{"action":"unlink","sub":"of-x"}',headers:{Origin:'https://evil.invalid','Sec-Fetch-Site':'cross-site'}})).status,403);
+ passed('officer sessions can open Members; non-officer members, guests and signed-out visitors get 403; the owner still can');
+ // Officers cannot unlink or block an officer; the owner can; officers unlink, block and unblock others.
+ await link('of-casey','Casey Example');await link('of-drew','Drew Example');await link('of-blair','Blair Example');await link('of-guest','Jamie Visitor [guest]','guest');
+ for(const action of ['unlink','block']){response=await post(off,{action,sub:'of-casey'});assert.equal(response.status,403);assert.deepEqual(await response.json(),{error:'Only the site owner can unlink or block an officer.'});assert.ok(await has('of-casey'));assert.ok(!await blockedHas('of-casey'));}
+ assert.equal((await post(off,{action:'unlink',sub:'of-drew'})).status,200);assert.ok(!await has('of-drew'));
+ assert.equal((await post(off,{action:'block',sub:'of-blair'})).status,200);assert.ok(!await has('of-blair'));assert.ok(await blockedHas('of-blair'));
+ assert.equal((await post(off,{action:'unblock',sub:'of-blair'})).status,200);assert.ok(!await blockedHas('of-blair'));
+ assert.equal((await post(off,{action:'block',sub:'of-guest'})).status,200);assert.ok(await blockedHas('of-guest'));await post(off,{action:'unblock',sub:'of-guest'});
+ assert.equal((await ownerPost({action:'block',sub:'of-casey'})).status,200);assert.ok(!await has('of-casey'));assert.ok(await blockedHas('of-casey'));assert.equal((await ownerPost({action:'unblock',sub:'of-casey'})).status,200);
+ // The officer check uses the roster match (accents and case), then the stored name.
+ await link('of-case','CASEY example');assert.equal((await post(off,{action:'unlink',sub:'of-case'})).status,403);assert.ok(await has('of-case'));
+ await clean();
+ passed('officers cannot unlink or block an officer, and the owner can; officers unlink, block and unblock others');
+ // Members carries each link's officer flag and the sync health.
+ await link('of-casey','Casey Example');await link('of-drew','Drew Example');await link('of-guest','Jamie Visitor [guest]','guest');
+ for(const r of [await call('/api/members'),await as(off,'/api/members')]){d=await r.json();const f=Object.fromEntries(d.links.filter(l=>l.sub.startsWith('of-')).map(l=>[l.sub,l.officer]));assert.deepEqual(f,{'of-casey':true,'of-drew':false,'of-guest':false});}
+ const setSync=state=>db.prepare("INSERT INTO app_settings (key,value) VALUES ('sheet_sync',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(state)).run();await setSync({pushed:await dataVersion(),okAt:1,error:null,failingSince:null}); d=await list();assert.deepEqual(d.sync,{behind:false,since:null,error:null,refused:null});
+ await db.prepare("INSERT INTO app_settings (key,value) VALUES ('sheet_sync',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({pushed:0,okAt:1,error:'Google Sheets is slow right now. Try again in a moment.',failingSince:1700000000000})).run();await db.prepare('UPDATE data_version SET version=version+1 WHERE id=1').run();
+ d=await list();assert.deepEqual(d.sync,{behind:true,since:1700000000000,error:'Google Sheets is slow right now. Try again in a moment.',refused:null});
+ await db.prepare("DELETE FROM app_settings WHERE key='sheet_sync'").run();await db.prepare('UPDATE data_version SET version=version+1 WHERE id=1').run();
+ await db.prepare("UPDATE app_settings SET value=json_set(value,'$.refused',json(?)) WHERE key='roster'").bind(JSON.stringify({names:['Alex Example'],officers:[],at:1700000000001})).run();
+ d=await list();assert.deepEqual(d.sync.refused,{names:1,current:4,at:1700000000001});
+ await clean();await seedRoster();
+ passed("Members carries each link's officer flag and the sync health");
+ // Use the new roster: accept-roster.
+ const raw=async()=>JSON.parse((await setting('roster')).value),refuse=async(refused,names=['Alex Example','Blair Example','Casey Example','Drew Example'])=>{await db.prepare("INSERT INTO app_settings (key,value) VALUES ('roster',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({names,officers:['Casey Example'],at:1,...refused&&{refused}})).run();};
+ await refuse(null);response=await post(off,{action:'accept-roster'});assert.equal(response.status,409);assert.deepEqual(await response.json(),{error:'No new roster is waiting.'});
+ await refuse({names:[],officers:[],at:2});let v=await dataVersion();response=await post(off,{action:'accept-roster'});assert.equal(response.status,409);assert.deepEqual(await response.json(),{error:'The new roster is empty. Fix the Roster tab first.'});assert.equal((await raw()).names.length,4);assert.equal(await dataVersion(),v);
+ assert.equal((await as(plain,'/api/members',{method:'POST',body:'{"action":"accept-roster"}'})).status,403);
+ await refuse({names:['Alex Example','Dana Example','Elle Example'],officers:['Dana Example'],at:2});v=await dataVersion();const t0=Date.now();
+ response=await post(off,{action:'accept-roster'});assert.equal(response.status,200);let rr=await raw();assert.deepEqual([rr.names,rr.officers,rr.refused],[['Alex Example','Dana Example','Elle Example'],['Dana Example'],undefined]);assert.ok(rr.at>=t0);assert.equal(await dataVersion(),v+1);
+ const snap=await snapshotRow();assert.equal(snap.version,v+1);assert.deepEqual([snap.data.roster,snap.officers],[rr.names,rr.officers]);
+ assert.equal((await list()).sync.refused,null);response=await ownerPost({action:'accept-roster'});assert.equal(response.status,409);
+ await seedRoster();
+ passed('Use the new roster accepts the refused roster with its officer flags and refreshes the snapshot; nothing waiting, or an empty roster, is a 409 with its text');
+}
 }finally{quiet=false;}}
 quiet=false;
 }
@@ -427,6 +474,12 @@ quiet=false;
   s=await minute();assert.equal(await dataVersion(),v0+51);assert.equal((await snapshotRow()).version,v0+51);assert.deepEqual(applied,[]);assert.ok(s.pushed<v0+51);
   s=await minute();assert.equal(syncs.at(-1).version,v0+51);assert.deepEqual(applied,[v0+51]);assert.equal(s.pushed,v0+51);assert.equal(await dataVersion(),v0+51);await minute();assert.equal(syncs.at(-1).rows,undefined);}
  passed("a sync reply whose mirrored version is above D1's data version (a fresh or restored D1) raises the data version past it, and the next minute run sends a push the script accepts (Ruling 5)");
+ // A read-style action that times out or finds the lock busy stores the read wording for the officer's "Last error" line, never the player's "Refresh to check whether your change saved".
+ {const slow=()=>new Promise(r=>setTimeout(()=>r(new MockResponse('{}')),3500)),busy=()=>j({ok:false,code:'busy',error:'Another player is updating the calendar. Try again.'});
+  googleHook=async request=>(await request.clone().json()).action==='sync'?slow():null;s=await minute();assert.equal(s.error,'Google Sheets is slow right now. Try again in a moment.');assert.ok(!/saved/.test(s.error));
+  googleHook=async request=>(await request.clone().json()).action==='sync'?busy():null;s=await minute();assert.equal(s.error,'Google Sheets is busy right now. Try again in a moment.');
+  googleHook=null;s=await minute();assert.equal(s.error,null);}
+ passed("a timed-out or busy sync stores the read wording as the officer-visible last error");
  }finally{googleHook=null;}}
 assert.ok(!logs.some(l=>/googleusercontent|qa_echo/.test(l)||l.includes(sheetSecret)));passed('logs never contain the echo URL or the connection secret');
 console.log(`${count} production API checks passed.`);

@@ -39,3 +39,11 @@ export async function syncHealth():Promise<{behind:boolean;since:number|null;err
  const d=database(),[v,s,r]=(await d.batch<any>([d.prepare(VERSION_SQL),d.prepare(STATE_SQL),d.prepare(ROSTER_SQL)])).map(x=>x.results[0]),state:SyncState=parse(s)??fresh,roster:Roster|null=parse(r),behind=v.version>state.pushed;
  return {behind,since:behind?state.failingSince:null,error:state.error,refused:roster?.refused?{names:roster.refused.names.length,current:roster.names.length,at:roster.refused.at}:null};
 }
+// Use the new roster: the officer confirmed the Roster tab that the guard refused. Written only while a refusal is still waiting.
+export async function acceptRefusedRoster():Promise<'ok'|'none'|'empty'>{
+ const d=database(),roster:Roster|null=parse(await d.prepare(ROSTER_SQL).first()),r=roster?.refused;
+ if(!r)return 'none';if(!r.names.length)return 'empty';
+ const [w]=await d.batch([d.prepare("UPDATE app_settings SET value=? WHERE key='roster' AND json_extract(value,'$.refused') IS NOT NULL").bind(JSON.stringify({names:r.names,officers:r.officers,at:Date.now()})),d.prepare('UPDATE data_version SET version=version+1 WHERE id=1')]);
+ if(!w.meta.changes)return 'none';
+ await buildSnapshot();return 'ok';
+}

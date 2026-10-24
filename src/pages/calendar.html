@@ -22,6 +22,7 @@
   <div id="profileMenu" class="menu" popover>
     <p class="muted small">Playing as</p>
     <p id="identity"></p>
+    <button id="membersOpen" type="button" hidden>Members</button>
     <form method="post" action="/auth/logout"><button id="signOut">Sign out</button></form>
   </div>
   <button class="primary post" id="postTop">+ Post reservation</button>
@@ -101,9 +102,22 @@
     </div>
   </form>
 </dialog>
+<dialog id="membersDialog" class="members" aria-labelledby="membersTitle">
+  <h2 id="membersTitle">Members</h2>
+  <div id="syncHealth" class="error" role="status" hidden></div>
+  <p id="count" class="status" role="status">Loading members…</p>
+  <ul id="roster"></ul>
+  <h3>Guests</h3>
+  <ul id="guests"></ul>
+  <h3>Blocked accounts</h3>
+  <ul id="blocked"></ul>
+  <div class="error" id="members-error" role="alert"></div>
+  <form method="dialog" class="modalactions"><button>Close</button></form>
+</dialog>
 <div id="toast" role="status" popover="manual"></div>
 
 <script id="calendarConfig" type="application/json">__CALENDAR_CONFIG__</script>
+<script src="/pickleball-members.js?v=__ASSET_VERSION__" defer></script>
 <script src="/pickleball-calendar.js?v=__ASSET_VERSION__" defer></script>
 </body>
 </html>
