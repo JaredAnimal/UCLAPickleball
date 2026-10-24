@@ -1,6 +1,5 @@
 import html from '../pages/calendar.html';
 import {env} from 'cloudflare:workers';
-import { ROSTER } from '../lib/pickleball-config';
 import {readSession,renewSession,linkedName,rosterNames} from '../lib/sign-in';
 import {database} from '../lib/database';
 export const assetVersion=()=>(env.CF_VERSION_METADATA?.id??'').replace(/[^A-Za-z0-9-]/g,'')||'dev';
@@ -13,7 +12,7 @@ export async function GET(request: Request) {
   if(r===null||r==='duplicate'){await d.prepare('UPDATE sessions SET player=NULL WHERE sub=?').bind(session.sub).run();return toLogin();}
   if(r!==session.player){await d.batch([d.prepare('UPDATE links SET player=? WHERE sub=?').bind(r,session.sub),d.prepare('UPDATE sessions SET player=? WHERE sub=?').bind(r,session.sub)]);session.player=r;}
  }
- const body = html.replace('__CALENDAR_CONFIG__',()=>JSON.stringify({roster:ROSTER,player:session.player}).replace(/</g,'\\u003c')).replaceAll('__ASSET_VERSION__',assetVersion());
+ const body = html.replace('__CALENDAR_CONFIG__',()=>JSON.stringify({player:session.player}).replace(/</g,'\\u003c')).replaceAll('__ASSET_VERSION__',assetVersion());
  const headers=new Headers({'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store'}),renewed=await renewSession(session,request);
  if(renewed)headers.append('Set-Cookie',renewed);
  return new Response(body,{headers});

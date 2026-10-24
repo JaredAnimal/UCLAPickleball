@@ -1,5 +1,4 @@
 import {json,sameOrigin,tooLarge,loadConnection} from '../lib/sheet-connection';
-import {ROSTER} from '../lib/pickleball-config';
 import {readSession} from '../lib/sign-in';
 import {readSnapshot,buildSnapshot,applyRequest,ensureImported,type Snapshot} from '../lib/reservation-store';
 import {RuleError,laYesterday} from '../lib/reservation-rules';
@@ -9,7 +8,7 @@ const DOWN='The calendar is temporarily unavailable. Please retry.';
 // Rows dated before yesterday (Pacific) stay in D1 but never reach players, even from a snapshot stored before midnight.
 const reply=(s:Snapshot,player:string)=>{const from=laYesterday();return {...s.data,matches:s.data.matches.filter(m=>m.date>=from),configured:true,officer:s.officers.includes(player)};};
 export async function GET(request:Request){
- try{const player=(await readSession(request))?.player;if(!player)return json({error:'Sign in to see reservations.'},401);const s=new URL(request.url).searchParams.get('fresh')==='1'?null:await readSnapshot();if(s)return json(reply(s,player));const c=await loadConnection();if(!c)return json({configured:false,roster:ROSTER,matches:[]});await ensureImported(c);return json(reply(await buildSnapshot(),player));}
+ try{const player=(await readSession(request))?.player;if(!player)return json({error:'Sign in to see reservations.'},401);const s=new URL(request.url).searchParams.get('fresh')==='1'?null:await readSnapshot();if(s)return json(reply(s,player));const c=await loadConnection();if(!c)return json({configured:false,rosterSize:0,matches:[]});await ensureImported(c);return json(reply(await buildSnapshot(),player));}
  catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:DOWN},503);}
 }
 export async function POST(request:Request){
