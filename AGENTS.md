@@ -31,10 +31,13 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 - Public players must never receive the connection secret, encryption key, bot password, or owner password.
 - Owner settings use `/admin`, an independent password, signed HttpOnly cookies, and login throttling. Do not trust caller-supplied Sites identity headers on this standalone host. `/admin` stays password-only and never needs Google.
 - Preserve the current Google Sheet and Apps Script deployment: when the `.gs` changes, deploy a new version of the same deployment (the URL stays). Do not run Google `setup` or rotate the shared secret for routine website changes.
-- D1 is the source of truth for reservations, receipts, the data version, the snapshot (the one row page loads read), the roster and the sync state. It also stores settings, login throttling, sessions, links (account to roster name) and blocked accounts.
+- D1 is the source of truth for reservations, receipts, the data version, the snapshot (the one row page loads read) and the sync state, and keeps the last accepted copy of the Roster tab; the roster and officers are edited only in the Sheet. It also stores settings, login throttling, sessions, links (account to roster name) and blocked accounts.
+- The Sheet copy finds its rows by an ID in column A and a `yyyy-mm-dd` date in column B; don't change those formats or the Reservations headers.
+- A change that adds a migration needs `pnpm db:remote` on the live database before it reaches `main` (merging deploys). Write migrations that only add tables, columns or indexes, so the live code keeps working in between.
+- Bump `CACHE_KEY` in `public/pickleball-calendar.js` when the `/api/reservations` reply shape changes.
 - The Sheet's Reservations tab is a one-way copy, rewritten every minute (`src/lib/sheet-sync.ts`) for rows dated yesterday (Pacific) or later. Hand edits there are overwritten; older rows are left untouched.
 - The roster is read from the Roster tab every minute. A roster that is empty, or under half the size of the last one, is refused until an officer chooses "Use the new roster".
 - The Officer column is the row-1 header `Officer`; marks are yes, y, x or true.
-- Page loads read one snapshot row, reconnecting never clears D1 data, and the old script actions stay for rollback. Replies carry `rosterSize`, never roster names. Do not import the old internship tracker or its personal data.
+- Page loads read one snapshot row, reconnecting never clears D1 data, and the old script actions stay for rollback. Calendar replies carry `rosterSize`, never roster names (only Members lists them). Do not import the old internship tracker or its personal data.
 - Branch previews must use separate test data, not the production Sheet connection.
 - Read README.md for deployment, reconnecting the Sheet, and the source map.

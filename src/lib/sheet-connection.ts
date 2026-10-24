@@ -71,5 +71,5 @@ export type SyncReply={roster:string[];officers:string[];mirrored:number;at:numb
 export async function syncCall(connection:SheetConnection,payload:Record<string,unknown>):Promise<SyncReply>{
  const d=await callScript(connection,payload);
  if(!Array.isArray(d.roster)||d.roster.length>500||!Array.isArray(d.officers)||!d.officers.every(name=>typeof name==='string')||!Number.isInteger(d.mirrored))throw new Error('Unexpected roster data from Google Sheets.');
- return {roster:names(d.roster),officers:d.officers,mirrored:d.mirrored as number,at:Number.isFinite(d.at)?Math.min(Number(d.at),Date.now()):Date.now()};
+ return {roster:names(d.roster),officers:(d.officers as string[]).filter(name=>!name.endsWith(' [guest]')),mirrored:d.mirrored as number,at:Number.isFinite(d.at)?Math.min(Number(d.at),Date.now()):Date.now()};
 }

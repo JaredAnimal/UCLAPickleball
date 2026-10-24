@@ -32,11 +32,15 @@ Keep the current site available until the replacement has been configured and te
 ## How data flows
 
 - D1 is the source of truth for reservations. Every save is checked by the Worker (`src/lib/reservation-rules.ts`) and written to D1 without calling Google.
-- Each minute a cron rewrites the Sheet's Reservations tab from D1 for rows dated yesterday (Pacific) or later. Hand edits there are overwritten; older rows are left untouched.
+- Each minute a cron rewrites the Sheet's Reservations tab from D1 for rows dated yesterday (Pacific) or later. Older rows are left untouched. Saves also push to the Sheet right after they land; the minute job catches up anything missed.
+- Change games on the site, not in the Sheet: officers have edit, cancel and remove on every game. Edits in the Sheet's Reservations tab (yesterday on) are overwritten at the next save.
+- Keep the Reservations tab's header row, column order and Date format (`yyyy-mm-dd`). The copy finds its rows by an ID in column A and a `yyyy-mm-dd` date in column B; a reformatted date hides a row from the copy, so it goes stale and a fresh copy is added below it. Sorting the tab is fine.
 - The same minute the Worker reads the Roster tab and its `Officer` column back into D1. A roster that is empty, or under half the size of the last one, is refused until an officer chooses "Use the new roster".
-- Page loads read one snapshot row from D1. Replies carry the roster size, never roster names.
+- Page loads read one snapshot row from D1. Calendar replies carry the roster size, never roster names; only Members (officers and the owner) lists them.
 
-## Mark officers
+## Roster and officers
+
+Add or remove players in column A of the Roster tab (header in row 1, one name per row). New names can sign in within a minute; a removed member goes back to the name step on their next visit. If the new list is empty or under half the size of the current one (for example a shorter roster for a new season), the site keeps the old one, and Members shows 'Use the new roster' to officers and to the owner at `/admin` → Members. The owner can always accept, even when the officers changed.
 
 Add a column to the Roster tab with the header `Officer` and type `yes` beside each officer. It takes effect within a minute. Officers see edit, cancel and remove on every game, plus Members in the profile menu. Whoever links an officer's name gets officer powers.
 
@@ -61,12 +65,12 @@ Run all checks:
 pnpm check
 ```
 
-This type-checks the Worker, tests the Apps Script reservation rules and calendar dates, bundles the Worker without deploying, and exercises the compiled Worker APIs in Miniflare. The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests.
+This type-checks the Worker, tests the Worker's reservation rules (`scripts/validate-rules.mjs`), the Apps Script copy, roster and rule actions and the calendar dates in a VM, bundles the Worker without deploying, and exercises the compiled Worker APIs in Miniflare. The GitHub Actions workflow runs the same checks on pushes to `main` and pull requests.
 
 ## One-time Cloudflare setup
 
 1. Sign in to your own Cloudflare account. Authorize Wrangler locally with `pnpm exec wrangler login`.
-2. Create the connection-settings database:
+2. Create the club database (reservations, roster copy, sign-in and settings):
 
    ```sh
    pnpm exec wrangler d1 create ucla-club-pickleball
@@ -177,14 +181,18 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 
 ## Switch-over
 
-1. Apply `0003` to remote D1 (`pnpm db:remote`) before the deploy.
-2. Deploy the script version with `sync`.
-3. Merge at a quiet hour, and make no saves for a minute around the merge: the outgoing Worker still writes the Sheet for a few seconds. The first request imports rows dated yesterday or later.
-4. Rollback:
+1. Apply `0003` to remote D1 (`pnpm db:remote`). It only adds tables and indexes, so the live code keeps working.
+2. Deploy the script version with `sync` (see Update the Google script). Its old actions are unchanged.
+3. Just before merging, press Refresh on the live calendar. The old code reads the Sheet, so a clean load means Google is answering. The first request after the deploy imports rows dated yesterday or later from the Sheet; if Google fails at that moment, the calendar shows 'temporarily unavailable' until it answers (it retries every minute).
+4. Merge at a quiet hour. Workers Builds deploys about 1–2 minutes after the merge: wait for it to finish, and make no saves from the merge until a minute after the deploy finishes (the outgoing Worker still writes the Sheet for a few seconds).
+5. After the deploy, load the calendar (this runs the import). Then check with read-only commands: `pnpm exec wrangler d1 execute DB --remote --command "SELECT version FROM data_version"` and `... --command "SELECT json_extract(value,'$.okAt') FROM app_settings WHERE key='sheet_sync'"` (the second number should advance every minute). Check the Reservations tab updates within a minute after a test save, and as owner check `/admin` → Members shows no sync error. An officer sees edit and cancel on others' games within a minute.
+6. Rollback:
    - In Members, check the Sheet copy is not behind, then wait a minute with no saves.
-   - Revert the PR; the old code reads the Sheet copy with `list`.
+   - Revert the PR; the old code reads the Sheet copy with `list`. Keep the new script version; its old actions serve the reverted code.
    - On the remote D1 run `DELETE FROM app_settings WHERE key='reservations_copy';` so the old code can write its copy again.
-5. Roll forward after a rollback, before merging again: `DELETE FROM reservations; DELETE FROM requests; DELETE FROM app_settings WHERE key IN ('reservations_imported','reservations_copy','sheet_sync','roster');` so the next request re-imports from the Sheet.
+7. Roll forward after a rollback, before merging again: `DELETE FROM reservations; DELETE FROM requests; DELETE FROM app_settings WHERE key IN ('reservations_imported','reservations_copy','sheet_sync','roster');` so the next request re-imports from the Sheet.
+
+D1 Time Travel keeps 7 days of history on the free plan (`wrangler d1 time-travel restore`) if D1 data ever needs restoring; the next minute re-copies the Sheet window.
 
 ## Source map
 
@@ -201,10 +209,11 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 | `src/routes/auth.ts` | Google sign-in start, callback, name step, and sign-out |
 | `src/routes/login.ts` / `src/pages/login.html` / `public/pickleball-login.js` | The `/login` page |
 | `public/privacy.html` | Public privacy page, linked from the sign-in page and Google's consent screen |
-| `src/routes/members.ts` | Members list API for the owner or an officer (unlink, block, unblock) |
+| `src/routes/members.ts` | Members API for the owner or an officer: list, unlink, block, unblock, accept a refused roster, Sheet sync health |
 | `src/lib/sign-in.ts` | Sessions, roster matching, and link helpers |
 | `src/lib/sheet-connection.ts` | Verified Google bridge and encrypted configuration |
 | `src/lib/admin-access.ts` | Owner password sessions and login throttling |
 | `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
+| `scripts/` | Worker rules tests, Apps Script and calendar VM tests, Miniflare API tests |
 | `migrations/` | D1 schema for settings, owner login throttling, sign-in sessions, links and blocked accounts, and (`0003`) reservations, receipts, the data version and sync state |

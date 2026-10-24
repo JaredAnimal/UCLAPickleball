@@ -37,7 +37,7 @@ export function syncSoon():void{
 }
 export async function syncHealth():Promise<{behind:boolean;since:number|null;error:string|null;refused:{names:number;current:number;at:number}|null}>{
  const d=database(),[v,s,r]=(await d.batch<any>([d.prepare(VERSION_SQL),d.prepare(STATE_SQL),d.prepare(ROSTER_SQL)])).map(x=>x.results[0]),state:SyncState=parse(s)??fresh,roster:Roster|null=parse(r),behind=v.version>state.pushed;
- return {behind,since:behind?state.failingSince:null,error:state.error,refused:roster?.refused?{names:roster.refused.names.length,current:roster.names.length,at:roster.refused.at}:null};
+ return {behind,since:behind?(state.failingSince??(state.okAt&&Date.now()-state.okAt>300000?state.okAt:null)):null,error:state.error,refused:roster?.refused?{names:roster.refused.names.length,current:roster.names.length,at:roster.refused.at}:null};
 }
 // Use the new roster: the officer confirmed the Roster tab that the guard refused. Written only while a refusal is still waiting.
 export async function acceptRefusedRoster():Promise<'ok'|'none'|'empty'>{
