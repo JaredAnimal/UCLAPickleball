@@ -16,7 +16,7 @@ export async function POST(request:Request){
  if(tooLarge(request,12000))return json({error:'Request is too large.'},413);
  try{
  const player=(await readSession(request))?.player;if(!player)return json({error:'Sign in before changing reservations.'},401);
- const raw=await request.text();if(raw.length>12000)return json({error:'Request is too large.'},400);const p=JSON.parse(raw)??{};
+ const raw=await request.text();if(raw.length>12000)return json({error:'Request is too large.'},400);let p:any;try{p=JSON.parse(raw)??{};}catch{return json({error:'Invalid request.'},400);}
  if(!['create','edit','join','leave','cancel','remove'].includes(p.action)||typeof p.player!=='string'||p.player.length>120||typeof p.requestId!=='string'||!/^[a-zA-Z0-9_-]{16,100}$/.test(p.requestId))return json({error:'Invalid reservation request.'},400);
  if(p.player!==player)return json({error:"You're signed in as a different player now. Reload the page."},403);
  if(p.action!=='create'&&(typeof p.id!=='string'||p.id.length>100))return json({error:'Invalid reservation.'},400);
@@ -26,5 +26,5 @@ export async function POST(request:Request){
  if(!await loadConnection())return json({error:'Connect the Google Sheet before saving shared reservations.'},409);
  // A rule rejection applied nothing; any other failure may have landed, and the receipt makes the client's one re-send safe.
  try{return json(reply((await applyRequest(p,player)).snapshot));}catch(error){if(!(error instanceof RuleError))throw error;return json({error:error.message,...((error as {busy?:boolean}).busy?{busy:true}:{}),...reply(await buildSnapshot())},409);}
- }catch(error){if(error instanceof SyntaxError)return json({error:'Invalid request.'},400);console.error('Reservation write failed',error instanceof Error?error.name:'Unknown');return json({error:DOWN,uncertain:true},503);}
+ }catch(error){console.error('Reservation write failed',error instanceof Error?error.name:'Unknown');return json({error:DOWN,uncertain:true},503);}
 }

@@ -1,3 +1,4 @@
+import {waitUntil} from 'cloudflare:workers';
 import {database} from './database';
 import {decide,fingerprint,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
 // D1 is the source of truth (migrations/0003). Every applied change bumps data_version; the reservations_copy row is the snapshot page loads read.
@@ -25,17 +26,19 @@ const write=(out:Exclude<Outcome,{kind:'none'}>,old:number|undefined,player:stri
  return d.prepare('UPDATE reservations SET cancelled_at=?,version=?,updated_at=?,updated_by=? WHERE id=? AND version=? AND cancelled_at IS NULL').bind(t,m.version,t,player,m.id,old);
 };
 // The write is guarded by the row version; changes() is the batch's previous statement, so a lost race writes no receipt and no version bump.
-// ponytail: two optimistic tries, then busy (the client re-sends with the same request id); a per-game queue needs Durable Objects, which the free plan lacks.
+// ponytail: four optimistic tries (about 30 queries with the busy reply, under the 50 cap), then busy; the client re-sends with the same request id. A per-game queue needs Durable Objects, which the free plan lacks.
 export async function applyRequest(req:ReservationRequest,player:string):Promise<{snapshot:Snapshot;wrote:boolean}>{
  const d=database(),fp=await fingerprint(req),create=req.action==='create',id=create?req.requestId:req.id;
- for(let n=0;n<2;n++){
+ for(let n=0;n<4;n++){
   const [receipt,row,roster]=(await d.batch<any>([d.prepare('SELECT fingerprint FROM requests WHERE request_id=?').bind(req.requestId),d.prepare('SELECT * FROM reservations WHERE id=?').bind(id),d.prepare(ROSTER_SQL)])).map(x=>x.results[0]);
   if(receipt){if(receipt.fingerprint!==fp)throw new RuleError(MSG.retryDifferent);return {snapshot:await buildSnapshot(),wrote:false};}
   const names=(parse(roster) as Roster|null)?.names;if(!names?.length)throw new RuleError(ROSTER_DOWN);
   const current=row&&(create||row.cancelled_at===null)?toReservation(row):null,out=decide(req,current,{now:laNow(),roster:names,officer:false});
   if(out.kind==='none')return {snapshot:await buildSnapshot(),wrote:false};
   const [w]=await d.batch([write(out,current?.version,player),d.prepare('INSERT INTO requests (request_id,fingerprint,at) SELECT ?,?,? WHERE changes()=1').bind(req.requestId,fp,Date.now()),d.prepare('UPDATE data_version SET version=version+1 WHERE id=1 AND changes()=1')]);
-  if(w.meta.changes===1)return {snapshot:await buildSnapshot(),wrote:true};
+  // reservations must never get a trigger that writes: its changes would count here and a lost race would look applied.
+  // The rebuild runs to the end even if the player disconnects, so plain loads don't keep the old version.
+  if(w.meta.changes===1){const p=buildSnapshot();waitUntil(p.catch(()=>{}));return {snapshot:await p,wrote:true};}
  }
  throw Object.assign(new RuleError(MSG.busy),{busy:true});
 }
