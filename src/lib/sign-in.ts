@@ -14,6 +14,7 @@ export async function createSession(sub:string,email:string,player:string|null):
  await database().prepare('INSERT INTO sessions (token_hash,sub,email,player,expires_at,renewed_at) VALUES (?,?,?,?,?,?)').bind(await sha256(token),sub,email,player,t+LIFE,t).run();
  return cookie(token,LIFE);
 }
+// A session counts only while its account is not blocked and, once it has a player, still has a links row (Unlink/Block beats a sign-in in progress); keep both subqueries.
 // Split so a poll can batch the session lookup with its other reads; null when the cookie is missing or malformed (no D1 call).
 export async function sessionQuery(request:Request):Promise<{hash:string;statement:D1PreparedStatement}|null>{
  const token=tokenOf(request);if(!token)return null;const hash=await sha256(token);

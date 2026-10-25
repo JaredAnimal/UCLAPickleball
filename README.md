@@ -109,7 +109,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
 
-Keep the encryption key stable after connecting the Sheet. Replacing it requires reconnecting with the Sheet secret. Changing the owner password invalidates owner sessions. Changing the session secret invalidates bot and owner sessions. No secret change signs players out; only deleting their `sessions` rows (or an officer's Unlink) does.
+Keep the encryption key stable after connecting the Sheet. Replacing it requires reconnecting with the Sheet secret. Changing the owner password invalidates owner sessions. Changing the session secret invalidates bot and owner sessions. No secret change signs players out; only deleting their `sessions` rows, an officer's Unlink, or a Block does (a session also stops counting once its `links` row is gone or its account is blocked).
 
 ## Google sign-in setup
 

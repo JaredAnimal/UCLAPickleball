@@ -189,7 +189,8 @@ passed('a save is two D1 round trips before its reply, a no-op or a refusal one;
  assert.equal((await write(a.token,{...payload,player:a.player,requestId:'receipt_check_join1',reservation:{...payload.reservation,capacity:1}})).status,200);await settled();
  let x=await get('?receipts=receipt_check_join1,receipt_unknown_000001,bad id!,receipt_check_join1');assert.equal(x.r.status,200);assert.deepEqual(x.d.receipts,['receipt_check_join1']);assert.equal(timingOf(x.r),1);
  x=await get('');assert.ok(!('receipts' in x.d));x=await get('?fresh=1&receipts=receipt_check_join1');assert.deepEqual(x.d.receipts,['receipt_check_join1']);
- x=await get('?receipts='+Array.from({length:25},(_,n)=>'receipt_unknown_'+String(n).padStart(6,'0')).join(','));assert.equal(x.r.status,200);assert.deepEqual(x.d.receipts,[]);assert.equal(timingOf(x.r),1);}
+ x=await get('?receipts='+Array.from({length:25},(_,n)=>'receipt_unknown_'+String(n).padStart(6,'0')).join(','));assert.equal(x.r.status,200);assert.deepEqual(x.d.receipts,[]);assert.equal(timingOf(x.r),1);
+ x=await get('?receipts='+Array.from({length:120},(_,n)=>n===20?'receipt_check_join1':'receipt_unknown_'+String(n).padStart(6,'0')).join(','));assert.equal(x.r.status,200);assert.deepEqual(x.d.receipts,[]);assert.equal(timingOf(x.r),1);}
 passed('a poll can ask for receipts in the same trip: applied ids come back, unknown and junk ids do not');
 {const a=await login('Alex Example');response=await write(a.token,{...payload,player:a.player,requestId:'d1_after_reply_0001'});data=await response.json();assert.equal(response.status,200);assert.ok(data.matches.some(m=>m.id==='d1_after_reply_0001'));
  assert.equal((await caughtUp()).version,await dataVersion());
