@@ -185,6 +185,12 @@ passed('a D1 failure on a save is a 503 uncertain with "The calendar is temporar
  await settled();k=logs.length;response=await write(b.token,{action:'join',player:b.player,id:rid,requestId:'d1_two_trips_join_02'});assert.equal(response.status,200);assert.equal(timingOf(response),1);assert.ok(await loggedAfter(k,/save join unchanged total=\d+ms d1=\d+ms trips=1/));
  k=logs.length;response=await write(c.token,{action:'join',player:c.player,id:rid,requestId:'d1_two_trips_full_01'});assert.equal(response.status,409);assert.equal(timingOf(response),1);assert.ok(await loggedAfter(k,/save join refused total=\d+ms d1=\d+ms trips=1/));}
 passed('a save is two D1 round trips before its reply, a no-op or a refusal one; Server-Timing says so and one log line carries action, outcome and times but no names');
+{const a=await login('Alex Example'),get=async(q,t=a.token)=>{const r=await publicCall('/api/reservations'+q,{signedOut:true,headers:{Cookie:'__Host-pb_s='+t}});return {r,d:await r.json()}};
+ assert.equal((await write(a.token,{...payload,player:a.player,requestId:'receipt_check_join1',reservation:{...payload.reservation,capacity:1}})).status,200);await settled();
+ let x=await get('?receipts=receipt_check_join1,receipt_unknown_000001,bad id!,receipt_check_join1');assert.equal(x.r.status,200);assert.deepEqual(x.d.receipts,['receipt_check_join1']);assert.equal(timingOf(x.r),1);
+ x=await get('');assert.ok(!('receipts' in x.d));x=await get('?fresh=1&receipts=receipt_check_join1');assert.deepEqual(x.d.receipts,['receipt_check_join1']);
+ x=await get('?receipts='+Array.from({length:25},(_,n)=>'receipt_unknown_'+String(n).padStart(6,'0')).join(','));assert.equal(x.r.status,200);assert.deepEqual(x.d.receipts,[]);assert.equal(timingOf(x.r),1);}
+passed('a poll can ask for receipts in the same trip: applied ids come back, unknown and junk ids do not');
 {const a=await login('Alex Example');response=await write(a.token,{...payload,player:a.player,requestId:'d1_after_reply_0001'});data=await response.json();assert.equal(response.status,200);assert.ok(data.matches.some(m=>m.id==='d1_after_reply_0001'));
  assert.equal((await caughtUp()).version,await dataVersion());
  const k=logs.length;try{for(const x of ['INSERT','UPDATE'])await db.prepare(`CREATE TRIGGER no_copy_${x} BEFORE ${x} ON app_settings WHEN NEW.key='reservations_copy' BEGIN SELECT RAISE(ABORT,'blocked'); END`).run();
