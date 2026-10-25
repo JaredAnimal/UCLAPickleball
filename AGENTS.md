@@ -17,7 +17,7 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 - Reservations default to Sunset Rec; the court remains editable. They allow up to 7 other players (8 on a court with the host); the Worker enforces it (`src/lib/reservation-rules.ts`).
 - Thursday practice is 5–7 PM; Sunday practice is 3–5 PM; member attendance is unlimited; guests cannot join practices.
 - Players sign in with a UCLA Google account (`g.ucla.edu`/`ucla.edu`). Members link one roster name once; guests type first + last, shown with a red `[guest]` marker, and the name is reserved for that account.
-- Only a reservation's host or a club officer may edit, cancel, or remove attendees; officers may also remove attendees from practice. The Worker enforces this; the UI only shows the buttons.
+- Only a reservation's host or a club officer may edit, cancel, or remove attendees; officers may also remove attendees from practice. The Worker enforces this; the UI only shows the buttons. Cards show only Join/Leave; the host and officers get one pencil on the card that opens the edit sheet (details, players, Cancel match), and its removals save only on Save.
 - Officers (the Officer column on the Roster tab) unlink or block accounts from Members in the profile menu, except other officers; /admin → Members is the owner's safety net.
 - The automation button contains a blue `[BETA]` marker. Its page is password gated; the download redirects to the Windows EXE installer on GitHub Releases.
 - Sync notices are hidden during successful operation and shown on errors. Do not add a reservations-sheet link to the public header.
