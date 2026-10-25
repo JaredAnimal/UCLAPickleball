@@ -31,8 +31,8 @@ async function syncSheet(connection:SheetConnection):Promise<void>{
 }
 export async function runSync(cron=false):Promise<void>{
  if(running&&Date.now()-running<60000){again=true;return;}
- running=Date.now();
- try{const c=await loadConnection();if(!c)return;if(cron)await ensureImported(c);const t=Date.now();await syncSheet(c);if(again&&Date.now()-t<8000)await syncSheet(c);}finally{running=0;again=false;}
+ const me=running=Date.now();
+ try{const c=await loadConnection();if(!c)return;if(cron)await ensureImported(c);const t=Date.now();await syncSheet(c);if(again&&Date.now()-t<8000)await syncSheet(c);}finally{if(running===me){running=0;again=false;}}
 }
 // After a save: push now instead of at the next minute. A failure only logs; the minute job tries again.
 export function syncSoon():void{
