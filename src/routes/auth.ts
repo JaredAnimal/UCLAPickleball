@@ -70,7 +70,7 @@ export async function name(request:Request){
   const m=rosterMatch(typed,roster);if(m===null)return refused('not-found');if(m==='duplicate')return refused('duplicate');
   player=m;key='member:'+normalize(m);
  }
- try{const d=database();await d.batch([d.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?) ON CONFLICT(sub) DO UPDATE SET kind=excluded.kind,player=excluded.player,name_key=excluded.name_key,email=excluded.email,linked_at=excluded.linked_at').bind(session.sub,guest?'guest':'member',player,key,session.email,Math.floor(Date.now()/1000)),d.prepare('UPDATE sessions SET player=? WHERE sub=?').bind(player,session.sub)]);}
+ try{const d=database();await d.batch([d.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sessions WHERE token_hash=?) AND NOT EXISTS (SELECT 1 FROM blocked WHERE sub=?) ON CONFLICT(sub) DO UPDATE SET kind=excluded.kind,player=excluded.player,name_key=excluded.name_key,email=excluded.email,linked_at=excluded.linked_at').bind(session.sub,guest?'guest':'member',player,key,session.email,Math.floor(Date.now()/1000),session.hash,session.sub),d.prepare('UPDATE sessions SET player=? WHERE sub=?').bind(player,session.sub)]);}
  catch(error){if(/UNIQUE constraint failed: links\.name_key/.test(String((error as Error)?.message)+String((error as any)?.cause?.message)))return refused(guest?'guest-taken':'taken');throw error;}
  return json({ok:true});
 }

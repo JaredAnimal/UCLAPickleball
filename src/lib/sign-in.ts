@@ -17,7 +17,7 @@ export async function createSession(sub:string,email:string,player:string|null):
 // Split so a poll can batch the session lookup with its other reads; null when the cookie is missing or malformed (no D1 call).
 export async function sessionQuery(request:Request):Promise<{hash:string;statement:D1PreparedStatement}|null>{
  const token=tokenOf(request);if(!token)return null;const hash=await sha256(token);
- return {hash,statement:database().prepare('SELECT sub,email,player,expires_at,renewed_at FROM sessions WHERE token_hash=? AND expires_at>?').bind(hash,now())};
+ return {hash,statement:database().prepare('SELECT sub,email,player,expires_at,renewed_at FROM sessions WHERE token_hash=? AND expires_at>? AND NOT EXISTS (SELECT 1 FROM blocked b WHERE b.sub=sessions.sub) AND (player IS NULL OR EXISTS (SELECT 1 FROM links l WHERE l.sub=sessions.sub))').bind(hash,now())};
 }
 export const sessionOf=(hash:string,r:any):Session|null=>r?{hash,sub:r.sub,email:r.email,player:r.player,expiresAt:r.expires_at,renewedAt:r.renewed_at}:null;
 export async function readSession(request:Request):Promise<Session|null>{const q=await sessionQuery(request);return q?sessionOf(q.hash,await q.statement.first()):null;}
