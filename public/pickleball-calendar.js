@@ -130,7 +130,8 @@ function mutate(action,payload,applied,reopen){
  if(loadError){$('matchError').textContent=loadError;toast(loadError);loadReservations(true);}if(fromDevice||!loaded||loadError)return false;if(Date.now()-lastOp<400)return false;
  const who=user,retry=['create','edit'].includes(action),signature=JSON.stringify({action,player:who,...payload});let saved;try{saved=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
  const requestId=retry&&saved?.signature===signature?saved.requestId:crypto.randomUUID(),op={action,payload,requestId,who,reopen},draft=JSON.parse(JSON.stringify(matches));
- try{applyLocal(draft,action,payload,requestId)}catch(error){const message=problem(error,'Could not confirm the update. Refresh before retrying.');$('matchError').textContent=message;toast(message);resync=true;settle();return false;}
+ // Refused on the current copy: an open sheet reopens on that copy (so what was typed survives a clash a poll brought in), anything else shows the reason.
+ try{applyLocal(draft,action,payload,requestId)}catch(error){const message=problem(error,'Could not confirm the update. Refresh before retrying.');if(reopen&&$('editor').open){$('editor').close();reopen(message);}else{$('matchError').textContent=message;toast(message);}resync=true;settle();return false;}
  if(retry)try{sessionStorage.setItem(PENDING_KEY,JSON.stringify({signature,requestId}))}catch{}
  pending.push(op);queue=queue.then(()=>run(op)).catch(console.error);lastOp=Date.now();matches=draft;applied?.();render();return true;
 }
@@ -138,7 +139,7 @@ function signup(match,joining){if(mutate(joining?'join':'leave',{id:match.id}))t
 const capacityHint=()=>{$('capacity').setCustomValidity(+$('capacity').value>7?'Choose up to 7 other players (8 on the court).':+$('capacity').value<(+$('capacity').min||0)?'Keep room for the '+$('capacity').min+' already signed up.':'');$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} ${editing&&editing.host!==user?'with the host':'with you'}`+(+$('capacity').value===7?' (up to 7 others, 8 on the court)':'')};
 const formState=()=>JSON.stringify(FIELDS.map(k=>$(k).value)),editorDirty=()=>formState()!==editorStart||removing.size>0;
 // The edit sheet's save is one request: the details it opened with (`before`, so only someone else's detail change clashes), the details if they changed (never on practices or started matches) and the marked players. Null when nothing changes.
-const editPayload=(m,r,out,before)=>{const p={id:m.id,before};if(!isPractice(m)&&!started(m)&&FIELDS.some(k=>String(r[k])!==String(m[k]??'')))p.reservation=r;if(out.length)p.remove=out;return p.reservation||p.remove?p:null};
+const sameField=(a,b,k)=>String(a?.[k]??'')===String(b?.[k]??''),editPayload=(m,r,out,before)=>{const p={id:m.id,before};if(!isPractice(m)&&!started(m)&&FIELDS.some(k=>!sameField(r,m,k)))p.reservation=r;if(out.length)p.remove=out;return p.reservation||p.remove?p:null};
 const capacityFloor=()=>{if(editing){$('capacity').min=Math.max(0,editing.players.length-removing.size);capacityHint();}};
 // The edit sheet's players: ✕ marks one for removal and Undo takes it back; nothing saves until Save.
 function drawPlayers(m){
@@ -149,21 +150,24 @@ function drawPlayers(m){
 function openEditor(match=null){
  if(!loaded||loadError)return;const practice=!!match&&isPractice(match),begun=!!match&&!practice&&started(match);editing=match;editingBefore=match&&Object.fromEntries(FIELDS.map(k=>[k,match[k]]));removing=new Set();$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?practice?'Edit practice':'Edit reservation':'Post a reservation';$('editorLead').hidden=!!match;$('startedNote').hidden=!begun;$('details').hidden=$('details').disabled=practice||begun;$('editPlayers').hidden=!match;$('cancelMatch').hidden=!match||practice;$('saveMatch').textContent=match?'Save changes':'Save reservation';if(match)drawPlayers(match);$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER_SIZE-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER_SIZE-1));$('capacity').min=match?.players.length||0;$('notes').value=match?.notes??'';capacityHint();editorStart=formState();$('editor').showModal();
 }
-// A refused save reopens the sheet on the server's copy with what was typed, the marks that still apply and the reason. `before` stays the details it first opened with, so someone else's change is never overwritten.
+// A refused save reopens the sheet on the current copy, which also becomes `before`: each detail the user changed keeps what was typed, the rest come from that copy, so the next Save overwrites only this user's changes. Locked details (started, practice) stay as stored; marks still in the game stay marked.
 function reopenSheet(was,typed,out,before,message){
- if(document.querySelector('dialog[open]'))return toast(message);const m=was&&matches.find(x=>x.id===was.id)||was;openEditor(m);if(!$('editor').open)return toast(message);
- for(const k in typed)$(k).value=typed[k];removing=new Set(out.filter(n=>m.players.includes(n)));if(m){drawPlayers(m);capacityFloor();}else capacityHint();editingBefore=before;$('matchError').textContent=message;
+ if(document.querySelector('dialog[open]'))return toast(message);const cur=was&&matches.find(x=>x.id===was.id),m=cur||was;openEditor(m);if(!$('editor').open)return toast(message);
+ if(!$('details').disabled)for(const k of FIELDS)if(!sameField(typed,before,k))$(k).value=typed[k];removing=new Set(out.filter(n=>m.players.includes(n)));if(m){drawPlayers(m);capacityFloor();}else capacityHint();
+ $('matchError').textContent=cur&&FIELDS.some(k=>cur[k]!==before[k])?'Someone else changed this match. Check the details, then save again.':message;
 }
 $('capacity').oninput=capacityHint;document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const c=$('capacity');c.value=Math.min(+c.max||42,Math.max(+c.min||0,(+c.value||0)+ +b.dataset.step));capacityHint()});
 posts.forEach(b=>b.onclick=()=>openEditor());$('membersOpen').onclick=()=>{$('profileMenu').hidePopover?.();$('membersDialog').showModal();loadMembers()};document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{listFilter=b.dataset.filter;render()});$('closeEditor').onclick=()=>$('editor').close();
 $('cancelMatch').onclick=()=>{const m=editing;ask({title:'Cancel this match?',day:matchWhen(m),note:spotsLine((matches.find(x=>x.id===m.id)||m).players.length),keep:'Keep it',ok:'Cancel match'}).then(yes=>{if(yes&&mutate('cancel',{id:m.id},()=>$('editor').close()))toast('Reservation canceled.')})};
 outsideClose($('confirm'));outsideClose($('membersDialog'));outsideClose($('editor'),editorDirty);$('editor').addEventListener('cancel',event=>{if(editorDirty()){event.preventDefault();toast('You have unsaved changes. Save them, or tap Close to discard.')}});
-$('matchForm').onsubmit=event=>{event.preventDefault();const was=editing,reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()},p=was&&editPayload(was,reservation,[...removing],editingBefore);
+$('matchForm').onsubmit=event=>{event.preventDefault();const was=editing,reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()},out=[...removing],before=editingBefore,p=was&&editPayload(was,reservation,out,before),again=m=>reopenSheet(was,reservation,out,before,m);
+ // A match that started while the sheet was open locks its details: say so instead of dropping what was typed.
+ if(was&&!$('details').disabled&&started(was)&&FIELDS.some(k=>!sameField(reservation,was,k))){$('editor').close();return again('This match has already started.');}
  if(was&&!p)return $('editor').close();
  if(!was||p.reservation)try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}
  const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();};
- if(was){if(mutate('edit',p,show,m=>reopenSheet(was,reservation,p.remove||[],p.before,m)))toast(p.reservation?'Reservation updated.':p.remove.length===1?playerName(p.remove[0])+' removed.':p.remove.length+' players removed.');return;}
- if(!mutate('create',{reservation},show,m=>reopenSheet(null,reservation,[],null,m))){if(!$('editor').open)$('editor').showModal();return;}toast('Reservation posted.');};
+ if(was){if(mutate('edit',p,show,again))toast(p.reservation?'Reservation updated.':p.remove.length===1?playerName(p.remove[0])+' removed.':p.remove.length+' players removed.');return;}
+ if(!mutate('create',{reservation},show,again)){if(!$('editor').open)$('editor').showModal();return;}toast('Reservation posted.');};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>{if($('refresh').getAttribute('aria-disabled')==='true')return;loadReservations(false,true)};
 const autoRefresh=()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};
