@@ -485,14 +485,14 @@ quiet=false;
  passed('the minute job pushes the window once per data change: rows from yesterday on, not cancelled, with D1 versions, ISO updatedAt and the data version; no rows when nothing changed; one Google call per run');
  k=syncs.length;r=await save('sync_save_push_00001');assert.equal(r.status,200,r.text);assert.equal(syncs.length,k+1);p=syncs.at(-1);assert.equal(p.version,await dataVersion());assert.deepEqual((({id,version,host,court})=>({id,version,host,court}))(p.rows.find(x=>x.id==='sync_save_push_00001')),{id:'sync_save_push_00001',version:1,host:'Alex Example',court:'QA court'});assert.equal((await state()).pushed,await dataVersion());
  passed('a save starts a background sync that pushes the new row');
- {k=syncs.length;const ids=['sync_burst_save_0001','sync_burst_save_0002'],rs=await Promise.all(ids.map(id=>post(id)));assert.deepEqual(rs.map(x=>x.status),[200,200]);for(let i=0;i<150&&(await state()).pushed<await dataVersion();i++)await sleep(20);
+ {k=syncs.length;const ids=['sync_burst_save_0001','sync_burst_save_0002'],rs=await Promise.all(ids.map(id=>post(id)));assert.deepEqual(rs.map(x=>x.status),[200,200]);for(let i=0;i<150&&((await state()).pushed<await dataVersion()||syncs.length<k+2);i++)await sleep(20);await sleep(100);
   p=syncs.slice(k).filter(x=>x.rows).at(-1);assert.ok(ids.every(id=>p.rows.some(x=>x.id===id)));assert.equal((await state()).pushed,await dataVersion());}
  passed('two saves at once: a save made during a background run is pushed by one more pass, not left for the minute job');
  {let open=0,most=0,release;const gate=new Promise(r=>release=r);k=syncs.length;
   googleHook=async request=>{const p=await request.clone().json();if(p.action!=='sync')return null;open++;most=Math.max(most,open);syncs.push(p);if(syncs.length===k+1)await gate;open--;return j({ok:true,apiVersion:2,sheetId,roster:CLUB,officers:[],mirrored:p.version??0,at:Date.now()});};
   r=await post('sync_guard_save_0001');assert.equal(r.status,200);for(let i=0;i<100&&syncs.length<k+1;i++)await sleep(20);
   assert.equal((await cron()).outcome,'ok');await sleep(100);assert.equal(syncs.length,k+1,'the minute run waited for the running sync');release();
-  for(let i=0;i<150&&(syncs.length<k+2||(await state()).pushed<await dataVersion());i++)await sleep(20);assert.equal(syncs.length,k+2);assert.equal(most,1);assert.equal((await state()).pushed,await dataVersion());googleHook=null;}
+  for(let i=0;i<150&&(syncs.length<k+2||(await state()).pushed<await dataVersion());i++)await sleep(20);assert.equal(syncs.length,k+2);assert.equal(most,1);assert.equal((await state()).pushed,await dataVersion());googleHook=null;await sleep(100);}
  passed('the minute job and post-save syncs share one guard: a minute run during a background sync makes no second Google call at once, and one more pass follows');
  {googleHook=async()=>new MockResponse('down',{status:503});const before=await state();r=await save('sync_down_save_00001');assert.equal(r.status,200,r.text);assert.ok(r.ms<1000,`the save took ${r.ms} ms`);
   s=await state();assert.match(s.error,/HTTP 503/);const since=s.failingSince;assert.ok(since>=before.okAt);assert.equal(s.pushed,before.pushed);
