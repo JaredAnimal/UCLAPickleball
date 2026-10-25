@@ -100,7 +100,7 @@ function applyLocal(rows,action,payload,id,who=user){
  if(action==='leave')match.players=match.players.filter(name=>name!==who);match.version=(match.version||1)+1;
 }
 const viewOf=(confirmed,ops)=>{const rows=JSON.parse(JSON.stringify(confirmed));for(const op of ops)try{applyLocal(rows,op.action,op.payload,op.requestId,op.who)}catch{}return rows};
-function setView(){matches=viewOf(confirmed,pending);render();}
+function setView(){matches=viewOf(confirmed,pending);render();refreshEditor();}
 function landed(rows,action,payload,id,user){
  const m=rows.find(x=>x.id===(action==='create'?id:payload.id));
  if(action==='create')return !!m;if(action==='cancel')return !m;if(action==='join')return !!m?.players.includes(user);if(action==='leave')return !m||!m.players.includes(user);if(action==='remove')return !m||!m.players.includes(payload.target);
@@ -149,6 +149,8 @@ function drawPlayers(m){
  const row=(name,host)=>{const li=document.createElement('li'),b=document.createElement('button');li.innerHTML=`${av(name)}<span class="pname">${playerHtml(name)}</span>${host?' <strong>· Host</strong>':''}`;list.append(li);if(host)return;b.type='button';b.dataset.k='x'+name;const mark=()=>{const out=removing.has(name);li.className=out?'removed':'';b.className=out?'textbtn':'iconbtn';b.innerHTML=out?'Undo':CROSS;b.setAttribute('aria-label',(out?'Undo remove ':'Remove ')+playerName(name))};b.onclick=()=>{if(!removing.delete(name))removing.add(name);mark();capacityFloor()};mark();li.append(b)};
  if(!isPractice(m))row(m.host,true);m.players.forEach(p=>row(p,false));
 }
+// The 30 s poll never touches an open sheet, so its Players list catches up here; typed details and marks stay.
+function refreshEditor(){const cur=editing&&$('editor').open&&matches.find(x=>x.id===editing.id);if(!cur||cur.players.length===editing.players.length&&cur.players.every((n,i)=>n===editing.players[i]))return;editing.players=[...cur.players];removing=new Set([...removing].filter(n=>cur.players.includes(n)));const k=document.activeElement?.dataset?.k;drawPlayers(editing);capacityFloor();if(k)$('playerList').querySelector('[data-k="'+CSS.escape(k)+'"]')?.focus()}
 function openEditor(match=null){
  if(!loaded||loadError)return;const practice=!!match&&isPractice(match),begun=!!match&&!practice&&started(match);editing=match;editingBefore=match&&Object.fromEntries(FIELDS.map(k=>[k,match[k]]));removing=new Set();$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?practice?'Edit practice':'Edit reservation':'Post a reservation';$('editorLead').hidden=!!match;$('startedNote').hidden=!begun;$('details').hidden=$('details').disabled=practice||begun;$('editPlayers').hidden=!match;$('cancelMatch').hidden=!match||practice;$('saveMatch').textContent=match?'Save changes':'Save reservation';if(match)drawPlayers(match);$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER_SIZE-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER_SIZE-1));$('capacity').min=match?.players.length||0;$('notes').value=match?.notes??'';capacityHint();editorStart=formState();$('editor').showModal();
 }
