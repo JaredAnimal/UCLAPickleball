@@ -69,7 +69,7 @@ input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:0;border
 .iconbtn{background:none;border-color:transparent;width:44px;padding:0;display:inline-grid;place-items:center;color:var(--muted)}.iconbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.textbtn{background:none;border-color:transparent;padding:0 12px;color:var(--blue-ink)}.textbtn.danger{color:var(--danger)}
 .card .editbtn{position:absolute;top:4px;right:4px}.card.editable .cardtop{padding-right:34px}
 #details{border:0;margin:0;padding:0;min-width:0}.editplayers{margin-top:20px}.editplayers h3{margin:0;font-size:13px;font-weight:600}#playerList li>button{margin-left:auto}#playerList li.removed .pname{color:var(--muted);text-decoration:line-through}#playerList li.removed .av{opacity:.45}#cancelMatch{display:block;margin:18px auto 4px}
-.members{padding-top:0}.dialoghead{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-right:-10px;padding:18px 0 8px;background:var(--surface)}.dialoghead h2{margin:0}
+dialog.members{padding-top:0}.dialoghead{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 0 8px;background:var(--surface)}.dialoghead h2{margin:0}
 .panel{min-width:0;background:var(--surface);border-radius:20px;box-shadow:var(--shadow)}
 .bot-page{max-width:650px}.bot-panel{padding:28px}.bot-panel h2{margin-top:0}.bot-panel p{line-height:1.6}.bot-form button{margin-top:18px}
 .bot-status{margin:24px 0 0;padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--blue-wash)}
