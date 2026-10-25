@@ -1,15 +1,15 @@
 import {waitUntil} from 'cloudflare:workers';
 import {database} from './database';
 import {loadConnection,syncCall,type SheetConnection} from './sheet-connection';
-import {WINDOW_SQL,toReservation,buildSnapshot,type Roster} from './reservation-store';
+import {WINDOW_SQL,VERSION_SQL,ROSTER_SQL,ensureImported,toReservation,buildSnapshot,type Roster} from './reservation-store';
 import {laYesterday,rosterVerdict} from './reservation-rules';
 // The Sheet mirrors D1: a run pushes the window (yesterday on) when the data version moved past the last confirmed push, and pulls the Roster tab's names and officer flags through the roster guard.
 export type SyncState={pushed:number;okAt:number|null;error:string|null;failingSince:number|null};
-const VERSION_SQL='SELECT version FROM data_version WHERE id=1',STATE_SQL="SELECT value FROM app_settings WHERE key='sheet_sync'",ROSTER_SQL="SELECT value FROM app_settings WHERE key='roster'";
+const STATE_SQL="SELECT value FROM app_settings WHERE key='sheet_sync'";
 const parse=(row:any)=>row?JSON.parse(row.value):null,message=(error:unknown)=>error instanceof Error?error.message:'Unknown',fresh:SyncState={pushed:0,okAt:null,error:null,failingSince:null};
 const save=(s:SyncState)=>database().prepare("INSERT INTO app_settings (key,value) VALUES ('sheet_sync',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(s));
-// ponytail: per-isolate dedupe and failure memory: one background run at a time (plus one more pass for saves made during it) and a 60 s pause after a failed call. Other isolates keep their own; a save missed here waits for the minute job.
-let lastFail=0,running:Promise<void>|null=null,again=false;
+// ponytail: per-isolate guard shared by the minute job and post-save syncs: one Sheet sync at a time (plus one more pass for saves made during it) and a 60 s pause after a failed call. Other isolates keep their own; a save missed here waits for the minute job. The second pass runs only if the first took under 8 s: 8 s + the 20 s Google deadline ends inside waitUntil's 30 s limit (Miniflare can't test that limit), and the minute job picks up the rest.
+let lastFail=0,running=false,again=false;
 export async function syncSheet(connection:SheetConnection):Promise<void>{
  const d=database(),from=laYesterday(),now=Date.now();
  // ponytail: one read per run; split it if reads ever matter.
@@ -29,11 +29,14 @@ export async function syncSheet(connection:SheetConnection):Promise<void>{
  if(below||verdict==='accept')await buildSnapshot();
 }
 // After a save: push now instead of at the next minute. A failure only logs; the minute job tries again.
+export async function runSync(cron=false):Promise<void>{
+ if(running){again=true;return;}
+ running=true;
+ try{const c=await loadConnection();if(!c)return;if(cron)await ensureImported(c);const t=Date.now();await syncSheet(c);if(again&&Date.now()-t<8000)await syncSheet(c);}finally{running=false;again=false;}
+}
 export function syncSoon():void{
  if(Date.now()-lastFail<60000)return;
- if(running){again=true;return;}
- running=(async()=>{try{const c=await loadConnection();if(!c)return;await syncSheet(c);if(again){again=false;await syncSheet(c);}}catch(error){console.error('Background sync failed',message(error));}finally{running=null;again=false;}})();
- waitUntil(running);
+ waitUntil(runSync().catch(e=>console.error('Background sync failed',message(e))));
 }
 export async function syncHealth():Promise<{behind:boolean;since:number|null;error:string|null;refused:{names:number;current:number;at:number}|null}>{
  const d=database(),[v,s,r]=(await d.batch<any>([d.prepare(VERSION_SQL),d.prepare(STATE_SQL),d.prepare(ROSTER_SQL)])).map(x=>x.results[0]),state:SyncState=parse(s)??fresh,roster:Roster|null=parse(r),behind=v.version>state.pushed;
