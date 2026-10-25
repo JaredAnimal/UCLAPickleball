@@ -1,7 +1,7 @@
 import {json,sameOrigin,tooLarge,loadConnection} from '../lib/sheet-connection';
 import {database,timing,timed,serverTiming,type Timing} from '../lib/database';
 import {sessionQuery,sessionOf} from '../lib/sign-in';
-import {buildSnapshot,applyRequest,ensureImported,parseSnapshot,viewFor,saveReads,SNAPSHOT_SQL,VERSION_SQL,IMPORTED_SQL,type Snapshot} from '../lib/reservation-store';
+import {buildSnapshot,currentSnapshot,applyRequest,ensureImported,viewFor,saveReads,SNAPSHOT_SQL,VERSION_SQL,IMPORTED_SQL,type Snapshot} from '../lib/reservation-store';
 import {RuleError} from '../lib/reservation-rules';
 import {syncSoon} from '../lib/sheet-sync';
 const MAX_OTHER_PLAYERS=7;
@@ -11,7 +11,7 @@ const CONNECTED_SQL="SELECT 1 AS ok FROM app_settings WHERE key='google_sheets'"
 async function read(request:Request,t:Timing){
  try{const q=await sessionQuery(request);if(!q)return json({error:'Sign in to see reservations.'},401);
   const d=database(),[sess,snap,ver]=await timed(t,d.batch<any>([q.statement,d.prepare(SNAPSHOT_SQL),d.prepare(VERSION_SQL)])),player=sessionOf(q.hash,sess.results[0])?.player;if(!player)return json({error:'Sign in to see reservations.'},401);
-  const s=new URL(request.url).searchParams.get('fresh')==='1'?null:parseSnapshot(snap.results[0]);if(s)return json(viewFor(s.version>=(ver.results[0]?.version??0)?s:await buildSnapshot(t,true),player));
+  const s=new URL(request.url).searchParams.get('fresh')==='1'?null:await currentSnapshot(snap.results[0],ver.results[0],t);if(s)return json(viewFor(s,player));
   const c=await loadConnection();if(!c)return json({configured:false,rosterSize:0,matches:[]});await ensureImported(c);return json(viewFor(await buildSnapshot(t),player));}
  catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:DOWN},503);}
 }

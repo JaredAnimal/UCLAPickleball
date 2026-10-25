@@ -17,6 +17,8 @@ export function parseSnapshot(row:any):Snapshot|null{const s=parse(row);return N
 // The three reads a snapshot is built from (version, window, roster), in that order.
 export const snapshotReads=(d:D1Database)=>[d.prepare(VERSION_SQL),d.prepare(WINDOW_SQL).bind(laYesterday()),d.prepare(ROSTER_SQL)];
 // Rows dated before yesterday (Pacific) stay in D1 but never reach players, even from a snapshot stored before midnight.
+// The stored snapshot when it is current; one behind the data version is rebuilt for the caller and stored after the reply. null when there is no usable row.
+export async function currentSnapshot(snap:any,ver:any,t:Timing):Promise<Snapshot|null>{const s=parseSnapshot(snap);return s&&(s.version>=(ver?.version??0)?s:await buildSnapshot(t,true));}
 export const viewFor=(s:Snapshot,player:string)=>{const from=laYesterday();return {...s.data,matches:s.data.matches.filter(m=>m.date>=from),configured:true,officer:s.officers.includes(player)};};
 const snapshotOf=(version:number,rows:any[],rosterRow:any):Snapshot=>{const roster:Roster|null=parse(rosterRow);return {version,data:{ok:true,apiVersion:2,matches:rows.map(toReservation),rosterSize:roster?.names.length??0,at:Date.now()},officers:roster?.officers??[]};};
 // A build that read an older version never replaces a newer snapshot.
