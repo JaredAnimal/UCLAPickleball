@@ -153,7 +153,7 @@ passed('a non-officer gets "Only the host can change this match or remove player
  await send(a,{before:det({court:'One court 2'}),reservation:det({court:'Other tab court'})});assert.equal((await rowOf(rid)).version,7);
  await send(a,{before:det({court:'One court 2'}),reservation:det({court:'Stale court'})},409);assert.equal(d.error,'This match changed while you were editing. Refresh before saving.');assert.ok(d.matches.some(m=>m.id===rid));assert.equal((await rowOf(rid)).court,'Other tab court');
  ({r,v}=await state());await act(d4,'join');assert.deepEqual(await state(),{r,v});
- for(const body of [{before:det(),remove:'Dana Example'},{before:det(),remove:Array.from({length:61},(_,i)=>'P'+i)},{before:det(),remove:['']}])await send(a,body,400);
+ for(const body of [{before:det(),remove:'Dana Example'},{before:det(),remove:Array.from({length:61},(_,i)=>'P'+i)},{before:det(),remove:['']}]){await send(a,body,400);assert.equal(d.error,'Choose an attendee to remove.');}
  await send(a,{before:det()},400);assert.equal(d.error,'Invalid reservation request.');await send(a,{before:det({court:'Other tab court'}),remove:['Alex Example']},409);assert.equal(d.error,'Choose an attendee to remove.');
  await act(d4,'leave');assert.equal((await rowOf(rid)).version,8);v=await dataVersion();
  await act(a,'remove',{target:'Dana Example'});assert.equal((await rowOf(rid)).version,8);assert.equal(await dataVersion(),v);
@@ -205,7 +205,8 @@ passed('a poll that heals a stale snapshot answers 200 with the current data eve
 {const cfg=h=>JSON.parse(/<script id="calendarConfig" type="application\/json">([^<]*)<\/script>/.exec(h)[1]),page=async who=>{const r=await publicCall('/',{signedOut:true,headers:{Cookie:'__Host-pb_s='+who.token}});assert.equal(r.status,200);return [r,await r.text()];},a=await login('Alex Example');
  assert.equal((await write(a.token,{...payload,player:a.player,requestId:'d1_page_escape_0001',reservation:{...payload.reservation,notes:'</script><b>x'}})).status,200);
  await settled();let [r,html]=await page(a);assert.equal(timingOf(r),1);assert.equal(cfg(html).player,'Alex Example');assert.deepEqual(cfg(html).reservations,await (await publicCall('/api/reservations',{signedOut:true,headers:{Cookie:'__Host-pb_s='+a.token}})).json());assert.ok(html.includes('\\u003c/script>\\u003cb>x'));assert.ok(!html.includes('</script><b>x'));
- await db.prepare('UPDATE data_version SET version=version+1 WHERE id=1').run();[r,html]=await page(a);assert.ok(cfg(html).reservations.matches.length>0);assert.equal((await snapshotRow()).version,await dataVersion());
+ const tag='</script> __ASSET_VERSION__ x';assert.equal((await write(a.token,{...payload,player:a.player,requestId:'d1_page_asset_0001',reservation:{...payload.reservation,notes:tag}})).status,200);await settled();[r,html]=await page(a);assert.ok(cfg(html).reservations.matches.some(m=>m.notes===tag));
+ await db.prepare('UPDATE data_version SET version=version+1 WHERE id=1').run();[r,html]=await page(a);assert.ok(cfg(html).reservations.matches.length>0);assert.equal((await caughtUp()).version,await dataVersion());
  await db.prepare("DELETE FROM app_settings WHERE key='reservations_copy'").run();[r,html]=await page(a);assert.ok(!('reservations' in cfg(html)));
  await putRoster(CLUB,['Blair Example']);await settled()/* putRoster deletes the snapshot row; this GET rebuilds it */;[r,html]=await page(await login('Blair Example'));assert.equal(cfg(html).reservations.officer,true);assert.ok(!html.includes('"officers"'));await putRoster(CLUB);}
 passed('the page arrives with the reply a poll gets, in one D1 round trip, with < escaped; a stale snapshot is rebuilt first; no snapshot row means no embedded reply; an officer’s page says officer:true without officer names');

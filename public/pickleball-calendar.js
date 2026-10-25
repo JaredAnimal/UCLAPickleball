@@ -155,7 +155,7 @@ function openEditor(match=null){
 function reopenSheet(was,typed,out,before,message){
  if(document.querySelector('dialog[open]'))return toast(message);const cur=was&&matches.find(x=>x.id===was.id),m=cur||was;openEditor(m);if(!$('editor').open)return toast(message);
  if(!$('details').disabled)for(const k of FIELDS)if(!sameField(typed,before,k))$(k).value=typed[k];removing=new Set(out.filter(n=>m.players.includes(n)));if(m){drawPlayers(m);capacityFloor();}else capacityHint();
- $('matchError').textContent=cur&&FIELDS.some(k=>cur[k]!==before[k])?'Someone else changed this match. Check the details, then save again.':message;
+ $('matchError').textContent=/changed/.test(message)&&cur&&FIELDS.some(k=>cur[k]!==before[k])?'Someone else changed this match. Check the details, then save again.':message;
 }
 $('capacity').oninput=capacityHint;document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const c=$('capacity');c.value=Math.min(+c.max||42,Math.max(+c.min||0,(+c.value||0)+ +b.dataset.step));capacityHint()});
 posts.forEach(b=>b.onclick=()=>openEditor());$('membersOpen').onclick=()=>{$('profileMenu').hidePopover?.();$('membersDialog').showModal();loadMembers()};document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{listFilter=b.dataset.filter;render()});$('closeEditor').onclick=()=>$('editor').close();

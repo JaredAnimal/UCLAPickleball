@@ -20,7 +20,7 @@ async function page(request:Request,t:Timing){
   if(r===null||r==='duplicate'){await d.prepare('UPDATE sessions SET player=NULL WHERE sub=?').bind(session.sub).run();return toLogin();}
   if(r!==session.player){await d.batch([d.prepare('UPDATE links SET player=? WHERE sub=?').bind(r,session.sub),d.prepare('UPDATE sessions SET player=? WHERE sub=?').bind(r,session.sub)]);session.player=r;}
  }
- const s=await currentSnapshot(snap.results[0],ver.results[0],t).catch(()=>null),body = html.replace('__CALENDAR_CONFIG__',()=>JSON.stringify({player:session.player,...s?{reservations:viewFor(s,session.player!)}:{}}).replace(/</g,'\\u003c')).replaceAll('__ASSET_VERSION__',assetVersion());
+ const s=await currentSnapshot(snap.results[0],ver.results[0],t).catch(error=>{console.error('Calendar page read failed',error instanceof Error?error.message:'Unknown');return null;}),body = html.replaceAll('__ASSET_VERSION__',assetVersion()).replace('__CALENDAR_CONFIG__',()=>JSON.stringify({player:session.player,...s?{reservations:viewFor(s,session.player!)}:{}}).replace(/</g,'\\u003c'));
  const headers=new Headers({'Content-Type':'text/html; charset=utf-8','Cache-Control':'private, no-store'}),renewed=renewSession(session,request);
  if(renewed)headers.append('Set-Cookie',renewed);
  return new Response(body,{headers});

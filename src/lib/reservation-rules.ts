@@ -69,7 +69,7 @@ export function rosterVerdict(next:{names:string[];officers:string[]},last:{name
  if(last&&JSON.stringify([next.names,next.officers])===JSON.stringify([last.names,last.officers]))return 'same';
  return last&&next.names.length*2<last.names.length?'refuse':'accept';
 }
-// Same digest as the script, so a retry is recognised across both paths.
+// Same digest as the script for the old request shapes (the script never digests `before` or `remove`), so a retry is recognised across both paths.
 export async function fingerprint(req:ReservationRequest):Promise<string>{
  const {action,player,id,expectedVersion,reservation,target,before,remove}=req;
  return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({action,player,id,expectedVersion,reservation,target,before,remove}))))));

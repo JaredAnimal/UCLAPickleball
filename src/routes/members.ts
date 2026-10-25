@@ -14,7 +14,7 @@ async function viewer(request:Request,officers:string[]):Promise<'owner'|'office
 const officerLink=(l:{kind:string;player:string},roster:string[]|null,officers:string[])=>{const m=roster&&l.kind==='member'?rosterMatch(l.player,roster):null;return l.kind==='member'&&officers.includes(m&&m!=='duplicate'?m:l.player);};
 // What Members shows: the same list for GET and for the reply to every action (one round trip per action).
 async function listing(who:'owner'|'officer'){
- const officers=(await readRoster())?.officers??[],d=database(),roster=await rosterNames();
+ const row=await readRoster(),officers=row?.officers??[],d=database(),roster=row?.names?.length?row.names:null;
  const links=((await d.prepare('SELECT sub,kind,player,email,linked_at FROM links ORDER BY linked_at DESC, sub').all()).results as any[]).map(l=>({sub:l.sub,kind:l.kind,player:l.player,email:l.email,linkedAt:l.linked_at,...(()=>{const m=roster&&l.kind==='member'?rosterMatch(l.player,roster):undefined,rosterName=m==null||m==='duplicate'?null:m;return {rosterName,onRoster:roster&&l.kind==='member'?rosterName!==null:null,officer:officerLink(l,roster,officers)};})()}));
  const blocked=((await d.prepare('SELECT sub,email,blocked_at FROM blocked ORDER BY blocked_at DESC, sub').all()).results as any[]).map(b=>({sub:b.sub,email:b.email,blockedAt:b.blocked_at}));
  return {viewer:who,roster,links,blocked,sync:await syncHealth()};
