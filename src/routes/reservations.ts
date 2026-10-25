@@ -1,16 +1,20 @@
 import {json,sameOrigin,tooLarge,loadConnection} from '../lib/sheet-connection';
-import {readSession} from '../lib/sign-in';
-import {readSnapshot,buildSnapshot,applyRequest,ensureImported,type Snapshot} from '../lib/reservation-store';
-import {RuleError,laYesterday} from '../lib/reservation-rules';
+import {database,timing,timed,serverTiming,type Timing} from '../lib/database';
+import {readSession,sessionQuery,sessionOf} from '../lib/sign-in';
+import {buildSnapshot,applyRequest,ensureImported,parseSnapshot,viewFor,SNAPSHOT_SQL,VERSION_SQL} from '../lib/reservation-store';
+import {RuleError} from '../lib/reservation-rules';
 import {syncSoon} from '../lib/sheet-sync';
 const MAX_OTHER_PLAYERS=7;
 const DOWN='The calendar is temporarily unavailable. Please retry.';
-// Rows dated before yesterday (Pacific) stay in D1 but never reach players, even from a snapshot stored before midnight.
-const reply=(s:Snapshot,player:string)=>{const from=laYesterday();return {...s.data,matches:s.data.matches.filter(m=>m.date>=from),configured:true,officer:s.officers.includes(player)};};
-export async function GET(request:Request){
- try{const player=(await readSession(request))?.player;if(!player)return json({error:'Sign in to see reservations.'},401);const s=new URL(request.url).searchParams.get('fresh')==='1'?null:await readSnapshot();if(s)return json(reply(s,player));const c=await loadConnection();if(!c)return json({configured:false,rosterSize:0,matches:[]});await ensureImported(c);return json(reply(await buildSnapshot(),player));}
+// One D1 batch reads the session, the snapshot and the data version; a snapshot behind the version is rebuilt before the reply.
+async function read(request:Request,t:Timing){
+ try{const q=await sessionQuery(request);if(!q)return json({error:'Sign in to see reservations.'},401);
+  const d=database(),[sess,snap,ver]=await timed(t,d.batch<any>([q.statement,d.prepare(SNAPSHOT_SQL),d.prepare(VERSION_SQL)])),player=sessionOf(q.hash,sess.results[0])?.player;if(!player)return json({error:'Sign in to see reservations.'},401);
+  const s=new URL(request.url).searchParams.get('fresh')==='1'?null:parseSnapshot(snap.results[0]);if(s)return json(viewFor(s.version>=(ver.results[0]?.version??0)?s:await buildSnapshot(t),player));
+  const c=await loadConnection();if(!c)return json({configured:false,rosterSize:0,matches:[]});await ensureImported(c);return json(viewFor(await buildSnapshot(t),player));}
  catch(error){console.error('Reservation read failed',error instanceof Error?error.message:'Unknown');return json({configured:true,error:DOWN},503);}
 }
+export async function GET(request:Request){const t=timing(),r=await read(request,t);r.headers.set('Server-Timing',serverTiming(t));return r;}
 export async function POST(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
  if(tooLarge(request,12000))return json({error:'Request is too large.'},413);
@@ -29,6 +33,6 @@ export async function POST(request:Request){
  // Nothing is written if the import fails, so no uncertain flag: the client rolls the change back.
  try{await ensureImported(connection);}catch(error){console.error('Reservation import failed',error instanceof Error?error.message:'Unknown');return json({error:DOWN},503);}
  // A rule rejection applied nothing; any other failure may have landed, and the receipt makes the client's one re-send safe.
- try{const {snapshot,wrote}=await applyRequest(p,player);if(wrote)syncSoon();return json(reply(snapshot,player));}catch(error){if(!(error instanceof RuleError))throw error;return json({error:error.message,...((error as {busy?:boolean}).busy?{busy:true}:{}),...reply(await buildSnapshot(),player)},409);}
+ try{const {snapshot,wrote}=await applyRequest(p,player);if(wrote)syncSoon();return json(viewFor(snapshot,player));}catch(error){if(!(error instanceof RuleError))throw error;return json({error:error.message,...((error as {busy?:boolean}).busy?{busy:true}:{}),...viewFor(await buildSnapshot(),player)},409);}
  }catch(error){console.error('Reservation write failed',error instanceof Error?error.name:'Unknown');return json({error:DOWN,uncertain:true},503);}
 }

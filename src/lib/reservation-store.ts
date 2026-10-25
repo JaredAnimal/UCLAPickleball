@@ -1,5 +1,5 @@
 import {waitUntil} from 'cloudflare:workers';
-import {database} from './database';
+import {database,timed,type Timing} from './database';
 import {invokeSheet,type SheetConnection} from './sheet-connection';
 import {decide,fingerprint,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
 // D1 is the source of truth (migrations/0003). Every applied change bumps data_version; the reservations_copy row is the snapshot page loads read.
@@ -8,16 +8,21 @@ export type Snapshot={version:number;data:{ok:true;apiVersion:2;matches:Reservat
 // ponytail: no LIMIT; the window (yesterday on) is a few dozen games, and the snapshot must stay under D1's 2 MB value cap.
 export const WINDOW_SQL='SELECT * FROM reservations WHERE date >= ? AND cancelled_at IS NULL ORDER BY date, start_time, id';
 export const ROSTER_DOWN="Can't check the club roster right now. Try again in a minute.";
-const ROSTER_SQL="SELECT value FROM app_settings WHERE key='roster'",parse=(row:any)=>row?JSON.parse(row.value):null;
+export const ROSTER_SQL="SELECT value FROM app_settings WHERE key='roster'",SNAPSHOT_SQL="SELECT value FROM app_settings WHERE key='reservations_copy'",VERSION_SQL='SELECT version FROM data_version WHERE id=1',parse=(row:any)=>row?JSON.parse(row.value):null;
 export const toReservation=(row:Record<string,any>):Reservation=>({id:row.id,date:row.date,start:row.start_time,end:row.end_time,court:row.court,capacity:row.capacity,...(practiceFor(row.id)?{kind:'practice' as const}:{}),host:row.host,players:JSON.parse(row.players),notes:row.notes,version:row.version});
 export async function readRoster():Promise<Roster|null>{return parse(await database().prepare(ROSTER_SQL).first());}
 // An old-format copy row ({savedAt,data}) reads as null, so the next page load builds a snapshot from D1.
-export async function readSnapshot():Promise<Snapshot|null>{const s=parse(await database().prepare("SELECT value FROM app_settings WHERE key='reservations_copy'").first());return Number.isInteger(s?.version)&&Array.isArray(s.data?.matches)&&Number.isInteger(s.data?.rosterSize)&&Array.isArray(s.officers)?s:null;}
-export async function buildSnapshot():Promise<Snapshot>{
- const d=database(),[v,w,r]=await d.batch<any>([d.prepare('SELECT version FROM data_version WHERE id=1'),d.prepare(WINDOW_SQL).bind(laYesterday()),d.prepare(ROSTER_SQL)]),roster:Roster|null=parse(r.results[0]);
+export {parse as parseValue};
+export function parseSnapshot(row:any):Snapshot|null{const s=parse(row);return Number.isInteger(s?.version)&&Array.isArray(s.data?.matches)&&Number.isInteger(s.data?.rosterSize)&&Array.isArray(s.officers)?s:null;}
+// The three reads a snapshot is built from (version, window, roster), in that order.
+export const snapshotReads=(d:D1Database)=>[d.prepare(VERSION_SQL),d.prepare(WINDOW_SQL).bind(laYesterday()),d.prepare(ROSTER_SQL)];
+// Rows dated before yesterday (Pacific) stay in D1 but never reach players, even from a snapshot stored before midnight.
+export const viewFor=(s:Snapshot,player:string)=>{const from=laYesterday();return {...s.data,matches:s.data.matches.filter(m=>m.date>=from),configured:true,officer:s.officers.includes(player)};};
+export async function buildSnapshot(t?:Timing):Promise<Snapshot>{
+ const d=database(),[v,w,r]=await timed(t,d.batch<any>(snapshotReads(d))),roster:Roster|null=parse(r.results[0]);
  const s:Snapshot={version:v.results[0].version,data:{ok:true,apiVersion:2,matches:w.results.map(toReservation),rosterSize:roster?.names.length??0,at:Date.now()},officers:roster?.officers??[]};
  // A build that read an older version never replaces a newer snapshot.
- await d.prepare("INSERT INTO app_settings (key,value) VALUES ('reservations_copy',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(excluded.value,'$.version')>COALESCE(json_extract(app_settings.value,'$.version'),-1)").bind(JSON.stringify(s)).run();
+ await timed(t,d.prepare("INSERT INTO app_settings (key,value) VALUES ('reservations_copy',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(excluded.value,'$.version')>COALESCE(json_extract(app_settings.value,'$.version'),-1)").bind(JSON.stringify(s)).run());
  return s;
 }
 const write=(out:Exclude<Outcome,{kind:'none'}>,old:number|undefined,player:string)=>{
