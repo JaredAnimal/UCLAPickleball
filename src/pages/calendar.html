@@ -75,8 +75,9 @@
 
 <dialog id="editor" aria-labelledby="editorTitle">
   <h2 id="editorTitle" tabindex="-1" autofocus>Post a reservation</h2>
-  <p class="muted small">Already booked a court? Share it with the club here.</p>
+  <p class="muted small" id="editorLead">Already booked a court? Share it with the club here.</p>
   <form id="matchForm">
+    <fieldset id="details">
     <label>Date<input type="date" id="date" required></label>
     <div class="row times">
       <label>Start time<input type="time" id="start" required value="19:00"></label>
@@ -95,15 +96,24 @@
     <label>Notes (optional)
       <textarea id="notes" rows="3" maxlength="500" placeholder="Anything players should know?"></textarea>
     </label>
+    </fieldset>
+    <section id="editPlayers" class="editplayers" aria-labelledby="playersTitle" hidden>
+      <h3 id="playersTitle">Players</h3>
+      <ul id="playerList" class="players"></ul>
+    </section>
+    <button type="button" id="cancelMatch" class="danger textbtn" hidden>Cancel match</button>
     <div class="modalactions">
       <div class="error" id="matchError" role="alert"></div>
-      <button type="button" id="closeEditor">Cancel</button>
-      <button class="primary">Save reservation</button>
+      <button type="button" id="closeEditor">Close</button>
+      <button class="primary" id="saveMatch">Save reservation</button>
     </div>
   </form>
 </dialog>
 <dialog id="membersDialog" class="members" aria-labelledby="membersTitle">
-  <h2 id="membersTitle">Members</h2>
+  <div class="dialoghead">
+    <h2 id="membersTitle">Members</h2>
+    <form method="dialog"><button class="iconbtn" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form>
+  </div>
   <div id="syncHealth" class="error" role="status" hidden></div>
   <p id="count" class="status" role="status">Loading members…</p>
   <ul id="roster"></ul>
@@ -112,7 +122,6 @@
   <h3>Blocked accounts</h3>
   <ul id="blocked"></ul>
   <div class="error" id="members-error" role="alert"></div>
-  <form method="dialog" class="modalactions"><button>Close</button></form>
 </dialog>
 <div id="toast" role="status" popover="manual"></div>
 

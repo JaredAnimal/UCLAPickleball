@@ -21,7 +21,7 @@ const live=m=>`${m.date}T${m.end}`>clubNow(),chipTime=t=>timeLabel(t).replace(':
 const started=m=>`${m.date}T${isPractice(m)?m.end:m.start}`<=clubNow();
 function practiceForDate(date){const weekday=dateObj(date).getUTCDay(),start=weekday===4?'17:00':weekday===0?'15:00':null;if(!start)return null;return {id:'practice-'+date,kind:'practice',date,start,end:weekday===4?'19:00':'17:00',court:'Club practice',capacity:null,host:'Club practice',players:[],notes:'Weekly club practice. NOT open to guests.',version:1};}
 function matchesForDate(date,rows){const practice=practiceForDate(date),regular=rows.filter(m=>m.date===date&&!m.id.startsWith('practice-'));if(practice){const saved=rows.find(m=>m.id===practice.id);regular.push({...practice,players:saved?.players||[],version:saved?.version||1});}return regular.sort((a,b)=>a.start.localeCompare(b.start));}
-let user='',officer=false,selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastToday=localToday();let gone=false;const signedOut=()=>{if(!gone){gone=true;location.assign('/login')}};
+let user='',officer=false,selected=localToday(),windowStart=localToday(),editing=null,editingVersion=null,removing=new Set(),editorStart='',toastTimer,loaded=false,configured=false,loading=false,fromDevice=false,loadError='',matches=[],confirmed=[],pending=[],queue=Promise.resolve(),resync=false,lastOp=0,lastToday=localToday();let gone=false;const signedOut=()=>{if(!gone){gone=true;location.assign('/login')}};
 user=CONFIG.player;for(const k of ['ucla-pickleball-user-v1','ucla-pickleball-session-v1','pickleball-reservations-v1'])try{localStorage.removeItem(k)}catch{}
 const problem=(error,fallback)=>error instanceof TypeError||/^(Timeout|Abort)Error$/.test(error?.name)?'Network problem. Check your connection and try again.':error?.message||fallback;
 function toast(message,ms=5000){const t=$('toast');if($('editor').open&&$('matchError').textContent===message)return;if(document.querySelector('dialog[open]')){t.hidePopover?.();t.showPopover?.()}t.textContent=message;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.textContent='',ms);}
@@ -39,13 +39,15 @@ async function loadReservations(silent=false,fresh=false){
  settle();
 }
 function ask({title,day,note,keep,ok}){const d=$('confirm');if(d.open)return Promise.resolve(false);$('confirmTitle').textContent=title;$('confirmDay').textContent=day;$('confirmNote').textContent=note;$('confirmKeep').textContent=keep;$('confirmOk').textContent=ok;d.returnValue='';return new Promise(resolve=>{const done=()=>resolve(d.returnValue==='ok');d.addEventListener('close',done,{once:true});try{d.showModal();}catch{d.removeEventListener('close',done);return resolve(false);}$('confirmKeep').focus();});}
-$('confirm').addEventListener('click',event=>{if(event.target!==event.currentTarget)return;const r=event.currentTarget.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.currentTarget.close();});
+// A tap on the dimmed backdrop lands on the <dialog> itself, outside its box, and closes it unless `keep()` says no.
+const outsideClose=(d,keep=()=>false)=>d.addEventListener('click',event=>{if(event.target!==d||keep())return;const r=d.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)d.close();});
 function displayRange(){const last=addDays(windowStart,5);const sameMonth=windowStart.slice(0,7)===last.slice(0,7);const first=dayLabel(windowStart,{month:'short',day:'numeric',...(windowStart.slice(0,4)!==last.slice(0,4)?{year:'numeric'}:{})});return first+' – '+(sameMonth?dateObj(last).getUTCDate()+', '+last.slice(0,4):dayLabel(last,{month:'short',day:'numeric',year:'numeric'}));}
 // Spots drawn as dots: host plus joined players filled, the viewer's own spot gold. Text only past `max`.
 const spots=(m,max)=>{const total=m.capacity+1,taken=m.players.length+1,me=m.host===user||m.players.includes(user);return isPractice(m)||total>max?'':`<span class="spots" aria-hidden="true">${Array.from({length:total},(_,i)=>`<i class="${i<taken?(me&&!i?'me':'on'):''}"></i>`).join('')}</span>`};
 let listFilter='all';
 const initials=name=>playerName(name).trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const av=name=>`<span class="av${name===user?' me':''}" aria-hidden="true">${esc(initials(name))}</span>`;
+const icon=d=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`,PENCIL=icon('M4 20h4L19 9l-4-4L4 16zM13 7l4 4'),CROSS=icon('M6 6l12 12M18 6 6 18');
 function render(){
  const sig=JSON.stringify([matches,pending.map(o=>o.requestId),loadError,fromDevice,loaded,user,officer,listFilter,windowStart,selected,clubNow()]);if(sig===render.sig)return;render.sig=sig;$('membersOpen').hidden=!officer;const focused=document.activeElement?.dataset?.k;
  $('identity').innerHTML=playerHtml(user);$('initials').textContent=initials(user);$('profile').setAttribute('aria-label','Profile: '+playerName(user));$('monthTitle').textContent=displayRange();document.querySelectorAll('[data-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.filter===listFilter)));posts.forEach(b=>b.disabled=!loaded||!!loadError||fromDevice);showNotice();
@@ -68,14 +70,12 @@ function render(){
   daily.forEach(m=>{
    const i=shown++,practice=isPractice(m),own=!practice&&m.host===user,joined=m.players.includes(user),available=practice?Infinity:m.capacity-m.players.length,past=started(m),status=own?'Hosting':joined?'You’re in':practice?'':past?'Started':available>0?available+' open':'Full',saving=pending.some(op=>(op.payload.id||op.requestId)===m.id);const card=document.createElement('article');card.className=fresh?'card enter':'card';card.style.setProperty('--i',i);if(saving)card.setAttribute('aria-busy','true');
    card.innerHTML=`<div class="cardtop"><h5>${esc(timeLabel(m.start))} – ${esc(timeLabel(m.end))}</h5>${status&&`<span class="badge${own||joined?' mine':available<=0||past?' full':''}">${status}</span>`}</div><div class="muted small">${esc(m.court)}</div><div class="count${available<=0?' full':''}">${spots(m,12)}<strong>${practice?`${m.players.length} going`:`${m.players.length+1} of ${m.capacity+1} players`}</strong></div><ul class="players">${practice?'':`<li>${av(m.host)}${playerHtml(m.host)} <strong>· Host</strong></li>`}${m.players.map(player=>`<li>${av(player)}${playerHtml(player)}</li>`).join('')}</ul>${m.notes?`<p class="muted small" style="white-space:pre-wrap">${esc(m.notes)}</p>`:''}`;
-   if(own||officer){card.querySelectorAll('.players li').forEach((item,index)=>{if(index===0&&!practice)return;const player=m.players[practice?index:index-1],button=document.createElement('button');button.className='remove-player danger';button.dataset.k='r'+m.id+player;button.textContent='Remove';button.setAttribute('aria-label','Remove '+playerName(player));button.disabled=fromDevice||!!loadError||!loaded;button.onclick=()=>ask({title:'Remove '+playerName(player)+'?',day:matchWhen(m),note:"They'll lose their spot.",keep:'Keep',ok:'Remove'}).then(yes=>{if(yes&&mutate('remove',{id:m.id,target:player}))toast(playerName(player)+' removed from the match.');});item.append(button);});}
+   // One pencil for the host and officers (practices: officers, once someone is in); details, players and Cancel match all live in the edit sheet.
+   if(!past&&(own||officer&&(!practice||m.players.length))){const edit=document.createElement('button');edit.className='iconbtn editbtn';edit.dataset.k='e'+m.id;edit.setAttribute('aria-label',`Edit ${practice?'practice':'match'} at ${timeLabel(m.start)}`);edit.innerHTML=PENCIL;edit.disabled=saving||fromDevice||!!loadError||!loaded;edit.onclick=()=>openEditor(m);card.className+=' editable';card.append(edit);}
    const actions=document.createElement('div');actions.className='actions';const add=(label,fn,style='',disabled=false)=>{const button=document.createElement('button');button.textContent=label;button.className=style;button.dataset.k=m.id+':'+actions.childElementCount;button.disabled=disabled||fromDevice||!!loadError||!loaded;button.onclick=fn;actions.append(button)};
-   const hostBtns=()=>{add('Edit',()=>openEditor(m),'',past||saving);add('Cancel match',()=>ask({title:'Cancel this match?',day:matchWhen(m),note:spotsLine((matches.find(x=>x.id===m.id)||m).players.length),keep:'Keep it',ok:'Cancel match'}).then(yes=>{if(yes&&mutate('cancel',{id:m.id}))toast('Reservation canceled.')}),'danger')};
-   if(own)hostBtns();
-   else if(joined)add(practice?'Leave practice':'Leave match',()=>signup(m,false),'',past);
-   else if(practice&&isGuest(user))add('Members only',()=>{},'',true);
-   else if(!past&&available>0)add(practice?'Join practice':'Join match',()=>signup(m,true),'primary');
-   if(officer&&!practice&&!own)hostBtns();
+   if(!own){if(joined)add(practice?'Leave practice':'Leave match',()=>signup(m,false),'',past);
+    else if(practice&&isGuest(user))add('Members only',()=>{},'',true);
+    else if(!past&&available>0)add(practice?'Join practice':'Join match',()=>signup(m,true),'primary');}
    if(actions.firstChild)card.append(actions);block.append(card);
   });
  }
@@ -123,8 +123,8 @@ async function run(op){
  pending.splice(pending.indexOf(op),1);saveCount++;if(data){loadError='';confirmed=data.matches;ROSTER_SIZE=Number.isInteger(data.rosterSize)?data.rosterSize:ROSTER_SIZE;officer=data.officer===true;saveCopy(confirmed,ROSTER_SIZE);if(!text)try{if(JSON.parse(sessionStorage.getItem(PENDING_KEY)).requestId===requestId)sessionStorage.removeItem(PENDING_KEY)}catch{}}
  setView();if(text&&!gone)(failed&&!/changed/.test(text)&&op.reopen||toast)(text);settle();
 }
-function mutate(action,payload,applied,reopen){
- if(loadError){$('matchError').textContent=loadError;toast(loadError);loadReservations(true);}if(fromDevice||!loaded||loadError)return false;if(Date.now()-lastOp<400)return false;
+function mutate(action,payload,applied,reopen,chained=false){
+ if(loadError){$('matchError').textContent=loadError;toast(loadError);loadReservations(true);}if(fromDevice||!loaded||loadError)return false;if(!chained&&Date.now()-lastOp<400)return false;
  const who=user,retry=['create','edit'].includes(action),signature=JSON.stringify({action,player:who,...payload});let saved;try{saved=JSON.parse(sessionStorage.getItem(PENDING_KEY)||'null')}catch{}
  const requestId=retry&&saved?.signature===signature?saved.requestId:crypto.randomUUID(),op={action,payload,requestId,who,reopen},draft=JSON.parse(JSON.stringify(matches));
  try{applyLocal(draft,action,payload,requestId)}catch(error){const message=problem(error,'Could not confirm the update. Refresh before retrying.');$('matchError').textContent=message;toast(message);resync=true;settle();return false;}
@@ -133,14 +133,34 @@ function mutate(action,payload,applied,reopen){
 }
 function signup(match,joining){if(mutate(joining?'join':'leave',{id:match.id}))toast(joining?'You’re in!':isPractice(match)?'You left the practice.':'You left the match.');}
 const capacityHint=()=>{$('capacity').setCustomValidity(+$('capacity').value>7?'Choose up to 7 other players (8 on the court).':+$('capacity').value<(+$('capacity').min||0)?'Keep room for the '+$('capacity').min+' already signed up.':'');$('capacityHint').textContent=`Group of ${(+$('capacity').value||0)+1} with you`+(+$('capacity').value===7?' (up to 7 others, 8 on the court)':'')};
+const FIELDS=['date','start','end','court','capacity','notes'],formState=()=>JSON.stringify(FIELDS.map(k=>$(k).value)),editorDirty=()=>formState()!==editorStart||removing.size>0;
+// Removals save first (so spots can drop to match), then the details if any changed. Every save bumps the version by one, so the edit expects one more per removal.
+const editOps=(m,r,out,version)=>[...out.map(target=>['remove',{id:m.id,target}]),...!isPractice(m)&&FIELDS.some(k=>String(r[k])!==String(m[k]??''))?[['edit',{id:m.id,expectedVersion:version+out.length,reservation:r}]]:[]];
+const capacityFloor=()=>{if(editing){$('capacity').min=Math.max(0,editing.players.length-removing.size);capacityHint();}};
+// The edit sheet's players: ✕ marks one for removal and Undo takes it back; nothing saves until Save.
+function drawPlayers(m){
+ const list=$('playerList');list.innerHTML='';
+ const row=(name,host)=>{const li=document.createElement('li'),b=document.createElement('button');li.innerHTML=`${av(name)}<span class="pname">${playerHtml(name)}</span>${host?' <strong>· Host</strong>':''}`;list.append(li);if(host)return;b.type='button';b.dataset.k='x'+name;const mark=()=>{const out=removing.has(name);li.className=out?'removed':'';b.className=out?'textbtn':'iconbtn';b.innerHTML=out?'Undo':CROSS;b.setAttribute('aria-label',(out?'Keep ':'Remove ')+playerName(name))};b.onclick=()=>{if(!removing.delete(name))removing.add(name);mark();capacityFloor()};mark();li.append(b)};
+ if(!isPractice(m))row(m.host,true);m.players.forEach(p=>row(p,false));
+}
 function openEditor(match=null){
- if(!loaded||loadError)return;editing=match;editingVersion=match?.version||1;$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?'Edit reservation':'Post a reservation';$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER_SIZE-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER_SIZE-1));$('capacity').min=match?.players.length||0;$('notes').value=match?.notes??'';capacityHint();$('editor').showModal();
+ if(!loaded||loadError)return;const practice=!!match&&isPractice(match);editing=match;editingVersion=match?.version||1;removing=new Set();$('matchForm').reset();$('matchError').textContent='';$('editorTitle').textContent=match?practice?'Edit practice':'Edit reservation':'Post a reservation';$('editorLead').hidden=!!match;$('details').hidden=$('details').disabled=practice;$('editPlayers').hidden=!match;$('cancelMatch').hidden=!match||practice;$('saveMatch').textContent=match?'Save changes':'Save reservation';if(match)drawPlayers(match);$('date').min=localToday();$('date').value=match?match.date:selected<localToday()?localToday():selected;$('start').value=match?.start??'19:00';$('end').value=match?.end??'20:00';$('court').value=match?.court??'Sunset Rec';$('capacity').value=match?.capacity??Math.min(3,ROSTER_SIZE-1);$('capacity').max=Math.min(7,Math.max(0,ROSTER_SIZE-1));$('capacity').min=match?.players.length||0;$('notes').value=match?.notes??'';capacityHint();editorStart=formState();$('editor').showModal();
 }
 $('capacity').oninput=capacityHint;document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const c=$('capacity');c.value=Math.min(+c.max||42,Math.max(+c.min||0,(+c.value||0)+ +b.dataset.step));capacityHint()});
 posts.forEach(b=>b.onclick=()=>openEditor());$('membersOpen').onclick=()=>{$('profileMenu').hidePopover?.();$('membersDialog').showModal();loadMembers()};document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{listFilter=b.dataset.filter;render()});$('closeEditor').onclick=()=>$('editor').close();
-$('matchForm').onsubmit=event=>{event.preventDefault();const reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()};try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();},was=editing,version=editingVersion;
- const reopen=message=>{if(document.querySelector('dialog[open]'))return toast(message);openEditor(was);if(!$('editor').open)return toast(message);editingVersion=version;for(const k in reservation)$(k).value=reservation[k];capacityHint();$('matchError').textContent=message;};
- if(!mutate(editing?'edit':'create',{...(editing?{id:editing.id,expectedVersion:editingVersion}:{}),reservation},show,reopen)){if(!$('editor').open)$('editor').showModal();return;}toast(was?'Reservation updated.':'Reservation posted.');};
+$('cancelMatch').onclick=()=>{const m=editing;ask({title:'Cancel this match?',day:matchWhen(m),note:spotsLine((matches.find(x=>x.id===m.id)||m).players.length),keep:'Keep it',ok:'Cancel match'}).then(yes=>{if(yes&&mutate('cancel',{id:m.id},()=>$('editor').close()))toast('Reservation canceled.')})};
+outsideClose($('confirm'));outsideClose($('membersDialog'));outsideClose($('editor'),editorDirty);
+$('matchForm').onsubmit=event=>{event.preventDefault();const was=editing,reservation={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim(),capacity:Number($('capacity').value),notes:$('notes').value.trim()},ops=was?editOps(was,reservation,[...removing],editingVersion):[],edits=ops.some(([a])=>a==='edit');
+ if(!was||edits)try{checkData(reservation)}catch(error){$('matchError').textContent=error.message;return;}
+ const show=()=>{selected=reservation.date;if(selected<windowStart||selected>addDays(windowStart,5))windowStart=selected;$('editor').close();},version=edits?ops.at(-1)[1].expectedVersion:editingVersion;
+ const reopen=message=>{if(document.querySelector('dialog[open]'))return toast(message);openEditor(matches.find(x=>x.id===was?.id)||was);if(!$('editor').open)return toast(message);editingVersion=version;for(const k in reservation)$(k).value=reservation[k];capacityHint();$('matchError').textContent=message;};
+ if(was){
+  if(!ops.length)return $('editor').close();
+  try{const draft=JSON.parse(JSON.stringify(matches));for(const [a,p] of ops)applyLocal(draft,a,p,'check');}catch(error){$('matchError').textContent=problem(error,'Could not save these changes.');return;}
+  let done=0;for(const [a,p] of ops){if(!mutate(a,p,null,a==='edit'?reopen:null,done>0))break;done++;}if(!done)return;
+  show();toast(done<ops.length?'Some changes didn’t save. Check the match and try again.':edits?'Reservation updated.':ops.length===1?playerName(ops[0][1].target)+' removed.':ops.length+' players removed.');return;
+ }
+ if(!mutate('create',{reservation},show,reopen)){if(!$('editor').open)$('editor').showModal();return;}toast('Reservation posted.');};
 function moveWindow(days){windowStart=addDays(windowStart,days);selected=windowStart;render();}
 $('prev').onclick=()=>moveWindow(-6);$('next').onclick=()=>moveWindow(6);$('today').onclick=()=>{windowStart=localToday();selected=windowStart;render()};$('refresh').onclick=()=>{if($('refresh').getAttribute('aria-disabled')==='true')return;loadReservations(false,true)};
 const autoRefresh=()=>{const today=localToday();if(today!==lastToday){if(windowStart===lastToday)windowStart=today;if(selected===lastToday)selected=today;lastToday=today;render();}if((configured||!loaded)&&document.visibilityState==='visible')loadReservations(true)};
