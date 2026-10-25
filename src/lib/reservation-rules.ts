@@ -1,12 +1,15 @@
 // Reservation rules ported from pickleball-apps-script.gs (doPost, validate_, practice_, guest_). No imports and erasable TypeScript only, so Node can strip the types for scripts/validate-rules.mjs.
 export type Reservation={id:string;date:string;start:string;end:string;court:string;capacity:number|null;kind?:'practice';host:string;players:string[];notes:string;version:number};
 export type Draft={date:string;start:string;end:string;court:string;capacity:number;notes:string};
-export type ReservationRequest={action:'create'|'edit'|'join'|'leave'|'cancel'|'remove';player:string;requestId:string;id?:string;expectedVersion?:unknown;reservation?:unknown;target?:unknown};
+export type ReservationRequest={action:'create'|'edit'|'join'|'leave'|'cancel'|'remove';player:string;requestId:string;id?:string;expectedVersion?:unknown;reservation?:unknown;target?:unknown;before?:unknown;remove?:unknown};
 export type Outcome={kind:'none'}|{kind:'insert'|'update'|'cancel';match:Reservation};
 // A rejection: nothing was applied.
 export class RuleError extends Error{}
 export const MSG={notMember:'Choose a club player or enter a guest name.',guestPractice:'Club practice is NOT open to guests.',practiceId:'Practice IDs are reserved.',practiceEnded:'This practice has ended.',practiceFixed:'Weekly club practices cannot be edited or canceled.',idTaken:'Reservation ID already exists.',gone:'This reservation no longer exists. Refresh the calendar.',hostOnly:'Only the host can change this match or remove players.',started:'This match has already started.',changed:'This match changed while you were editing. Refresh before saving.',capacityBelow:'Capacity cannot be lower than the current signup count.',alreadyHost:'You are already the host.',full:'The last spot has been filled. Refresh the calendar.',badTarget:'Choose an attendee to remove.',badDate:'Choose a valid date.',badTimes:'End time must be after start time.',pastStart:'Choose a future start time.',badText:'Check the location and notes.',badCapacity:'Choose up to 7 other players (8 on the court).',busy:'Another player is updating the calendar. Try again.',retryDifferent:'The retry contains different data. Refresh and try again.'} as const;
 const fail=(m:string):never=>{throw new RuleError(m)};
+const DETAILS=['date','start','end','court','capacity','notes'] as const;
+// Names leaving a game: up to 60 strings of up to 120 characters, never the host; names not in it are ignored.
+const leaving=(list:unknown,host:string):Set<string>=>Array.isArray(list)&&list.length<=60&&list.every(n=>typeof n==='string'&&n.length<=120&&n!==host)?new Set(list):fail(MSG.badTarget);
 const LA=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 const parts=(ms:number)=>Object.fromEntries(LA.formatToParts(ms).map(p=>[p.type,p.value]));
 export const laNow=(ms=Date.now()):string=>{const p=parts(ms);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`};
@@ -36,24 +39,27 @@ export function decide(req:ReservationRequest,current:Reservation|null,ctx:{now:
  let match=current,fresh=false;
  if(action==='join'&&!match){const pr=practiceFor(req.id);if(pr){if(pr.date+'T'+pr.end<=now)fail(MSG.practiceEnded);match=pr;fresh=true}}
  const practice=!!match&&(match.kind==='practice'||!!practiceFor(match.id));
- if(practice&&(action==='edit'||action==='cancel'||action==='remove'&&!officer))fail(MSG.practiceFixed);
+ const details=action==='edit'&&req.reservation!==undefined;
+ if(practice&&(action==='cancel'||details||(action==='edit'||action==='remove')&&!officer))fail(MSG.practiceFixed);
  if(action==='create'){
   if(match)return match.host===player?{kind:'none'}:fail(MSG.idTaken);
   return {kind:'insert',match:{id:req.requestId,...validate(req.reservation,now,roster.length),host:player,players:[],version:1}};
  }
  if(!match)return action==='cancel'?{kind:'none'}:fail(MSG.gone);
  if((action==='edit'||action==='cancel'||action==='remove')&&match.host!==player&&!officer)fail(MSG.hostOnly);
- if(action!=='cancel'&&action!=='remove'&&match.date+'T'+(practice?match.end:match.start)<=now)fail(MSG.started);
+ if(action!=='cancel'&&action!=='remove'&&!(action==='edit'&&!details)&&match.date+'T'+(practice?match.end:match.start)<=now)fail(MSG.started);
  const next:Reservation={...match,players:[...match.players]};
  if(action==='edit'){
-  if(Number(req.expectedVersion)!==match.version)fail(MSG.changed);
-  const d=validate(req.reservation,now,roster.length);if(d.capacity<match.players.length)fail(MSG.capacityBelow);Object.assign(next,d);
+  if(details&&(req.before!==undefined?DETAILS.some(k=>(req.before as any)?.[k]!==match[k]):Number(req.expectedVersion)!==match.version))fail(MSG.changed);
+  const out=leaving(req.remove??[],match.host);next.players=next.players.filter(n=>!out.has(n));
+  if(details||req.remove===undefined){const d=validate(req.reservation,now,roster.length);if(d.capacity<next.players.length)fail(MSG.capacityBelow);Object.assign(next,d);}
  }else if(action==='join'){
   if(!practice&&match.host===player)fail(MSG.alreadyHost);
   if(!next.players.includes(player)){if(!practice&&next.players.length>=(match.capacity as number))fail(MSG.full);next.players.push(player)}
  }else if(action==='remove'){
-  const t=req.target;if(typeof t!=='string'||t===match.host||t.length>120)fail(MSG.badTarget);next.players=next.players.filter(n=>n!==t);
+  const out=leaving([req.target],match.host);next.players=next.players.filter(n=>!out.has(n));
  }else if(action==='leave')next.players=next.players.filter(n=>n!==player);
+ if(action!=='cancel'&&JSON.stringify(next)===JSON.stringify(match))return {kind:'none'};
  next.version++;
  return {kind:action==='cancel'?'cancel':fresh?'insert':'update',match:next};
 }
@@ -63,8 +69,8 @@ export function rosterVerdict(next:{names:string[];officers:string[]},last:{name
  if(last&&JSON.stringify([next.names,next.officers])===JSON.stringify([last.names,last.officers]))return 'same';
  return last&&next.names.length*2<last.names.length?'refuse':'accept';
 }
-// Same digest as the script, so a retry is recognised across both paths.
+// Same digest as the script for the old request shapes (the script never digests `before` or `remove`), so a retry is recognised across both paths.
 export async function fingerprint(req:ReservationRequest):Promise<string>{
- const {action,player,id,expectedVersion,reservation,target}=req;
- return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({action,player,id,expectedVersion,reservation,target}))))));
+ const {action,player,id,expectedVersion,reservation,target,before,remove}=req;
+ return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({action,player,id,expectedVersion,reservation,target,before,remove}))))));
 }

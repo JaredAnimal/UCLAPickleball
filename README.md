@@ -36,7 +36,8 @@ Keep the current site available until the replacement has been configured and te
 - Change games on the site, not in the Sheet: officers have edit, cancel and remove on every game. Edits in the Sheet's Reservations tab (yesterday on) are overwritten at the next save.
 - Keep the Reservations tab's header row, column order and Date format (`yyyy-mm-dd`). The copy finds its rows by an ID in column A and a `yyyy-mm-dd` date in column B; a reformatted date hides a row from the copy, so it goes stale and a fresh copy is added below it. Sorting the tab is fine.
 - The same minute the Worker reads the Roster tab and its `Officer` column back into D1. A roster that is empty, or under half the size of the last one, is refused until an officer chooses "Use the new roster".
-- Page loads read one snapshot row from D1. Calendar replies carry the roster size, never roster names; only Members (officers and the owner) lists them.
+- Page loads read one snapshot row from D1, and the page arrives with the games already in it. A read that finds the snapshot behind the data version rebuilds it first. Calendar replies carry the roster size, never roster names; only Members (officers and the owner) lists them.
+- Every `/api/reservations` reply and the calendar page carry `Server-Timing` (`d1`: time waiting on D1, with the number of D1 round trips in `desc`; `total`: the whole request). Each save logs one line, `save <action> <outcome> total=…ms d1=…ms trips=…`, with no names or emails.
 
 ## Roster and officers
 
