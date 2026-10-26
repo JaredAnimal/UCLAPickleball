@@ -24,7 +24,9 @@ export function practiceFor(id:unknown):Reservation|null{
  return {id,kind:'practice',date,start:day===4?'17:00':'15:00',end:day===4?'19:00':'17:00',court:'Club practice',capacity:null,host:'Club practice',players:[],notes:'Weekly club practice. NOT open to guests.',version:1};
 }
 type Slot=Pick<Reservation,'id'|'start'|'end'|'court'>;
-const courtOf=(c:string)=>c.trim().toLowerCase();
+// A court's location key: any court named "Sunset Rec…" ("Sunset Rec · Court 2") is Sunset Rec, else the trimmed lowercase text. LOC is the same in SQL (JS trims more whitespace, so it is never less strict).
+const courtOf=(c:string)=>(c=c.trim().toLowerCase()).startsWith('sunset rec')?'sunset rec':c;
+const LOC=(x:string)=>`CASE WHEN lower(trim(${x})) LIKE 'sunset rec%' THEN 'sunset rec' ELSE lower(trim(${x})) END`;
 // Court rules (SLOT_FREE repeats the 4-limit in SQL for the write): no game at Sunset Rec during that day's practice, checked first; at most 4 other games running at once at the court (start inclusive, end exclusive). `games` are the day's games; practice rows never count.
 export function slotProblem(r:Omit<Slot,'id'>&{date:string},games:Slot[],selfId:string|null):'courtFull'|'practice'|null{
  const c=courtOf(r.court),p=practiceFor('practice-'+r.date);if(c==='sunset rec'&&p&&r.start<p.end&&p.start<r.end)return 'practice';
@@ -32,7 +34,7 @@ export function slotProblem(r:Omit<Slot,'id'>&{date:string},games:Slot[],selfId:
  return [r.start,...others.map(o=>o.start).filter(t=>r.start<t&&t<r.end)].some(t=>others.filter(o=>o.start<=t&&t<o.end).length>=4)?'courtFull':null;
 }
 // slotProblem's 4-limit in SQL over ?1 id, ?2 date, ?3 start, ?4 end, ?5 court, for the write's WHERE (race-safe): no instant (the start, or another game's start inside this one) where 4 other games already run.
-export const SLOT_FREE="NOT EXISTS (SELECT 1 FROM (SELECT ?3 AS t UNION SELECT start_time FROM reservations WHERE date=?2 AND cancelled_at IS NULL AND id<>?1 AND id NOT GLOB 'practice-*' AND lower(trim(court))=lower(trim(?5)) AND start_time>?3 AND start_time<?4) p WHERE (SELECT count(*) FROM reservations r WHERE r.date=?2 AND r.cancelled_at IS NULL AND r.id<>?1 AND r.id NOT GLOB 'practice-*' AND lower(trim(r.court))=lower(trim(?5)) AND r.start_time<=p.t AND r.end_time>p.t)>=4)";
+export const SLOT_FREE=`NOT EXISTS (SELECT 1 FROM (SELECT ?3 AS t UNION SELECT start_time FROM reservations WHERE date=?2 AND cancelled_at IS NULL AND id<>?1 AND id NOT GLOB 'practice-*' AND ${LOC('court')}=${LOC('?5')} AND start_time>?3 AND start_time<?4) p WHERE (SELECT count(*) FROM reservations r WHERE r.date=?2 AND r.cancelled_at IS NULL AND r.id<>?1 AND r.id NOT GLOB 'practice-*' AND ${LOC('r.court')}=${LOC('?5')} AND r.start_time<=p.t AND r.end_time>p.t)>=4)`;
 export function practiceMsg(date:string):string{const p=practiceFor('practice-'+date)!,h=(t:string)=>+t.slice(0,2)%12||12;return `That’s club practice time (${new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})} ${h(p.start)}–${h(p.end)} ${+p.end.slice(0,2)<12?'AM':'PM'}). Pick another time.`;}
 // The court rules run on creates and on edits that move a game: a new date, start, end or court (as sent). Notes/capacity-only edits and joins skip them.
 export const moves=(req:ReservationRequest,cur:Reservation|null):boolean=>req.action==='create'||req.action==='edit'&&req.reservation!==undefined&&!!cur&&(['date','start','end','court'] as const).some(k=>(req.reservation as any)?.[k]!==cur[k]);
