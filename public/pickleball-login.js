@@ -1,7 +1,7 @@
 // Sign-in page: the Google step, then the Club/Guest name step. The Worker injects the config (src/routes/login.ts).
 const CONFIG=JSON.parse(document.getElementById('loginConfig').textContent),$=id=>document.getElementById(id),card=$('card');
 // A new account must never see the last one's reservations.
-try{localStorage.removeItem('pickleball-reservations-v1');localStorage.removeItem('pickleball-reservations-v2')}catch{}
+try{localStorage.removeItem('pickleball-reservations-v1');localStorage.removeItem('pickleball-reservations-v2');localStorage.removeItem('pickleball-reservations-v3')}catch{}
 // "Messenger" also catches WeChat (MicroMessenger); "; wv)" marks an Android WebView (Chrome Custom Tabs lack it).
 const IN_APP=/Instagram|FBAN|FBAV|FB_IAB|FBIOS|Messenger|Threads|musical_ly|BytedanceWebview|TikTok|Snapchat|LinkedInApp|Twitter|Line\/|; wv\)/i;
 if(CONFIG.stage==='name'){
