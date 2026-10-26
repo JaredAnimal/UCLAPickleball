@@ -3,6 +3,7 @@ declare namespace Cloudflare {
     DB: D1Database;
     ASSETS: Fetcher;
     API_LIMIT?: RateLimit;
+    API_NET_LIMIT?: RateLimit;
     CF_VERSION_METADATA?: WorkerVersionMetadata;
     ADMIN_PASSWORD: string;
     BOT_DOWNLOAD_PASSWORD: string;

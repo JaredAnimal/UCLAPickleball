@@ -40,6 +40,14 @@
         "limit": 60,
         "period": 60
       }
+    },
+    {
+      "name": "API_NET_LIMIT",
+      "namespace_id": "1002",
+      "simple": {
+        "limit": 300,
+        "period": 60
+      }
     }
   ],
   "rules": [
