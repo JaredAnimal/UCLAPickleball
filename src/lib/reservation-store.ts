@@ -1,7 +1,7 @@
 import {waitUntil} from 'cloudflare:workers';
 import {database,timed,type Timing} from './database';
 import {invokeSheet,type SheetConnection} from './sheet-connection';
-import {decide,fingerprint,moves,SLOT_FREE,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
+import {decide,fingerprint,moves,insertSql,updateSql,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
 // D1 is the source of truth (migrations/0003). Every applied change bumps data_version; the reservations_copy row is the snapshot page loads read.
 export type Roster={names:string[];officers:string[];at:number;refused?:{names:string[];officers:string[];at:number}};
 export type Snapshot={version:number;data:{ok:true;apiVersion:2;matches:Reservation[];rosterSize:number;at:number};officers:string[]};
@@ -38,8 +38,8 @@ export function saveReads(req:ReservationRequest):D1PreparedStatement[]{
 // A create or a moved edit that a parallel save beat to the slot (SLOT_FREE) writes nothing, so it re-reads as a lost race and decide refuses it.
 const write=(out:Exclude<Outcome,{kind:'none'}>,old:number|undefined,player:string,guard:boolean)=>{
  const d=database(),m=out.match,t=Date.now();
- if(out.kind==='insert')return d.prepare(`INSERT INTO reservations (id,date,start_time,end_time,court,capacity,host,players,notes,version,updated_at,updated_by) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12 WHERE ${guard?SLOT_FREE:'1'} ON CONFLICT(id) DO NOTHING`).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,m.host,JSON.stringify(m.players),m.notes,m.version,t,player);
- if(out.kind==='update')return d.prepare(`UPDATE reservations SET date=?2,start_time=?3,end_time=?4,court=?5,capacity=?6,players=?7,notes=?8,version=?9,updated_at=?10,updated_by=?11 WHERE id=?1 AND version=?12 AND cancelled_at IS NULL${guard?' AND '+SLOT_FREE:''}`).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,JSON.stringify(m.players),m.notes,m.version,t,player,old);
+ if(out.kind==='insert')return d.prepare(insertSql(guard)).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,m.host,JSON.stringify(m.players),m.notes,m.version,t,player);
+ if(out.kind==='update')return d.prepare(updateSql(guard)).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,JSON.stringify(m.players),m.notes,m.version,t,player,old);
  return d.prepare('UPDATE reservations SET cancelled_at=?,version=?,updated_at=?,updated_by=? WHERE id=? AND version=? AND cancelled_at IS NULL').bind(t,m.version,t,player,m.id,old);
 };
 // The write is guarded by the row version; changes() is the batch's previous statement, so a lost race writes no receipt and no version bump.
