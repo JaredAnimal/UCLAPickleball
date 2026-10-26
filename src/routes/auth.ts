@@ -21,7 +21,8 @@ export async function callback(request:Request){
  const q=new URL(request.url).searchParams,mine=(request.headers.get('cookie')||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(OAUTH+'='))?.slice(OAUTH.length+1)||'',[state,nonce]=mine.split('.');
  if(!state||!nonce||q.get('state')!==state){if((await readSession(request))?.player)return go(303,'/');return refuse('expired','state');}
  const code=q.get('code');if(q.get('error')||!code)return refuse('google','google error');
- if(!await attemptsAllowed('signin:'+await attemptKey(request),60,3600))return refuse('busy','network limit');
+ // 200 so a club fair on one campus network isn't turned away.
+ if(!await attemptsAllowed('signin:'+await attemptKey(request),200,3600))return refuse('busy','network limit');
  let claims:any;
  try{
   const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:env.GOOGLE_CLIENT_ID,client_secret:env.GOOGLE_CLIENT_SECRET,redirect_uri:new URL('/auth/callback',request.url).href,grant_type:'authorization_code'}),signal:AbortSignal.timeout(10000)});
@@ -62,16 +63,18 @@ export async function name(request:Request){
  if((tab!=='club'&&tab!=='guest')||![first,last].every(s=>s.length<=50&&/\p{L}/u.test(s)))return refused('invalid');
  const guest=tab==='guest',typed=first+' '+last;
  if(guest&&/[\[\]\p{C}]/u.test(typed))return refused('invalid');
- if(guest&&!await attemptsAllowed('guest:'+await attemptKey(request),5,3600))return refused('network');
  const roster=await rosterNames();if(!roster)return refused('roster');
  let player:string,key:string;
- if(guest){if(rosterMatch(typed,roster)!==null)return refused('roster-name');player=typed+' [guest]';key='guest:'+normalize(typed);}
+ // The network count comes after the cheap refusals (roster down, a roster name typed on the Guest tab); guest-taken, decided by the write, still counts.
+ if(guest){if(rosterMatch(typed,roster)!==null)return refused('roster-name');if(!await attemptsAllowed('guest:'+await attemptKey(request),5,3600))return refused('network');player=typed+' [guest]';key='guest:'+normalize(typed);}
  else{
   if(!await attemptsAllowed('name:'+session.sub,10,86400))return refused('limit');
   const m=rosterMatch(typed,roster);if(m===null)return refused('not-found');if(m==='duplicate')return refused('duplicate');
   player=m;key='member:'+normalize(m);
  }
- try{const d=database(),made=await d.batch([d.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sessions WHERE token_hash=?) AND NOT EXISTS (SELECT 1 FROM blocked WHERE sub=?) AND (? OR (SELECT count(*) FROM links WHERE kind=? AND linked_at>=?)<20) ON CONFLICT(sub) DO UPDATE SET kind=excluded.kind,player=excluded.player,name_key=excluded.name_key,email=excluded.email,linked_at=excluded.linked_at').bind(session.sub,guest?'guest':'member',player,key,session.email,Math.floor(Date.now()/1000),session.hash,session.sub,guest?0:1,'guest',pacificMidnight()),d.prepare('UPDATE sessions SET player=? WHERE sub=? AND changes()=1').bind(player,session.sub)]);if(made[0].meta.changes!==1)return refused(guest?'guest-limit':'signin');}
+ try{const d=database(),made=await d.batch([d.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM sessions WHERE token_hash=?) AND NOT EXISTS (SELECT 1 FROM blocked WHERE sub=?) AND (? OR EXISTS (SELECT 1 FROM links WHERE sub=? AND kind=\'guest\') OR (SELECT count(*) FROM links WHERE kind=\'guest\' AND linked_at>=?)<20) ON CONFLICT(sub) DO UPDATE SET kind=excluded.kind,player=excluded.player,name_key=excluded.name_key,email=excluded.email,linked_at=CASE WHEN links.kind=\'guest\' AND excluded.kind=\'guest\' THEN links.linked_at ELSE excluded.linked_at END').bind(session.sub,guest?'guest':'member',player,key,session.email,Math.floor(Date.now()/1000),session.hash,session.sub,guest?0:1,session.sub,pacificMidnight()),d.prepare('UPDATE sessions SET player=? WHERE sub=? AND changes()=1').bind(player,session.sub),d.prepare('SELECT EXISTS (SELECT 1 FROM sessions WHERE token_hash=?) AND NOT EXISTS (SELECT 1 FROM blocked WHERE sub=?) AS ok').bind(session.hash,session.sub)]);
+  // Nothing written: the cap only if the session and block conditions held (read in the same batch), else the session ended or the account was blocked meanwhile.
+  if(made[0].meta.changes!==1)return refused(guest&&(made[2].results[0] as {ok:number}|undefined)?.ok?'guest-limit':'signin');}
  catch(error){if(/UNIQUE constraint failed: links\.name_key/.test(String((error as Error)?.message)+String((error as any)?.cause?.message)))return refused(guest?'guest-taken':'taken');throw error;}
  return json({ok:true});
 }
