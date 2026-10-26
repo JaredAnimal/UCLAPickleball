@@ -1,0 +1,1 @@
+ALTER TABLE reservations ADD COLUMN host_plays INTEGER NOT NULL DEFAULT 1;
