@@ -145,7 +145,7 @@ const formState=()=>JSON.stringify(FIELDS.map(k=>$(k).value)),editorDirty=()=>fo
 // The edit sheet's save is one request: the details it opened with (`before`, so only someone else's detail change clashes), the details if they changed (never on practices or started matches) and the marked players. Null when nothing changes.
 const sameField=(a,b,k)=>String(a?.[k]??'')===String(b?.[k]??''),editPayload=(m,r,out,before)=>{const p={id:m.id,before};if(!isPractice(m)&&!started(m)&&FIELDS.some(k=>!sameField(r,m,k)))p.reservation=r;if(out.length)p.remove=out;return p.reservation||p.remove?p:null};
 // The court-rule caption under the times, and the Save check: only for a new game or one whose date, start, end or court changed (as the Worker does).
-const slotCheck=()=>{const r={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value};return !editingBefore||['date','start','end','court'].some(k=>r[k]!==editingBefore[k])?slotProblem(r,matches,editing&&editing.id):''},slotCaption=()=>{const t=slotCheck();$('slotNote').textContent=t;$('slotNote').hidden=!t};
+const slotCheck=()=>{const r={date:$('date').value,start:$('start').value,end:$('end').value,court:$('court').value.trim()};return !editingBefore||['date','start','end','court'].some(k=>r[k]!==editingBefore[k])?slotProblem(r,matches,editing&&editing.id):''},slotCaption=()=>{const t=slotCheck();$('slotNote').textContent=t;$('slotNote').hidden=!t};
 const capacityFloor=()=>{if(editing){$('capacity').min=Math.max(0,editing.players.length-removing.size);capacityHint();}};
 // The edit sheet's players: ✕ marks one for removal and Undo takes it back; nothing saves until Save.
 function drawPlayers(m){
