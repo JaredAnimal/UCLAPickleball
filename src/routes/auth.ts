@@ -4,11 +4,11 @@ import {json,sameOrigin,tooLarge} from '../lib/sheet-connection';
 import {normalize} from '../lib/player-session';
 import {attemptsAllowed} from '../lib/admin-access';
 import {createSession,readSession,endSession,rosterNames,rosterMatch,linkedName} from '../lib/sign-in';
-const OAUTH='__Host-pb_oauth',NO_STORE='private, no-store',HD=['g.ucla.edu','ucla.edu'],ISS=['accounts.google.com','https://accounts.google.com'];
+const OAUTH='__Host-pb_oauth',NO_STORE='private, no-store',ISS=['accounts.google.com','https://accounts.google.com'];
 const b64=(n:number)=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(n)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const oauthCookie=(value:string,age:number)=>`${OAUTH}=${value}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
 const go=(status:number,to:string,...cookies:string[])=>{const h=new Headers({Location:to,'Cache-Control':NO_STORE});for(const c of cookies)h.append('Set-Cookie',c);return new Response(null,{status,headers:h});};
-const refuse=(e:string,reason:string,hd?:string)=>{console.warn('Sign-in refused: '+reason+(hd===undefined?'':' hd='+String(hd).slice(0,60)));return go(303,'/login?e='+e,oauthCookie('',0));};
+const refuse=(e:string,reason:string)=>{console.warn('Sign-in refused: '+reason);return go(303,'/login?e='+e,oauthCookie('',0));};
 export const configured=()=>!!(env.GOOGLE_CLIENT_ID&&env.GOOGLE_CLIENT_SECRET);
 export async function start(request:Request){
  if(!configured())return go(302,'/login?e=setup');
@@ -31,7 +31,6 @@ export async function callback(request:Request){
  if(!claims||typeof claims!=='object'||claims.aud!==env.GOOGLE_CLIENT_ID||!ISS.includes(claims.iss)||!(claims.exp>Date.now()/1000)||typeof claims.sub!=='string'||!claims.sub||typeof claims.email!=='string'||!claims.email)return refuse('google','claims');
  if(claims.nonce!==nonce)return refuse('expired','nonce');
  if(claims.email_verified!==true)return refuse('account','email not verified');
- if(!HD.includes(claims.hd))return refuse('account','hd',claims.hd??'none');
  const sub=claims.sub as string,email=(claims.email as string).toLowerCase();
  if(await database().prepare('SELECT 1 FROM blocked WHERE sub=?').bind(sub).first())return refuse('blocked','blocked');
  // Linked member: the name must still be on the roster (stored with the roster's spelling; before the first roster arrives the link is kept, as in calendar.ts); guests and unlinked accounts go to the name step.
@@ -48,7 +47,7 @@ export async function logout(request:Request){
  return go(303,next?'/auth/google':'/login',await endSession(request));
 }
 const fail=(status:number,code:string,error:string)=>json({error,code},status);
-const MSG:Record<string,[number,string]>={signin:[401,'Sign in with Google first.'],invalid:[400,'Enter a first and a last name (up to 50 characters each, no brackets).'],'not-found':[404,"We couldn't find that name on the club roster. Check the spelling, or sign in as a guest."],taken:[409,"That name is linked to a different UCLA account. If it's yours, ask a club officer to reset it."],duplicate:[409,'Two roster names match. Ask a club officer.'],limit:[429,'Too many tries today. Sign in as a guest for now, or ask a club officer.'],'roster-name':[409,'That name is on the club roster. Use the Club tab.'],'guest-taken':[409,'Another UCLA account uses that guest name. Add a middle initial.'],roster:[503,"Can't check the club roster right now. Try again in a minute."]};
+const MSG:Record<string,[number,string]>={signin:[401,'Sign in with Google first.'],invalid:[400,'Enter a first and a last name (up to 50 characters each, no brackets).'],'not-found':[404,"We couldn't find that name on the club roster. Check the spelling, or sign in as a guest."],taken:[409,"That name is linked to another account. If it’s yours, ask a club officer to unlink it, then sign in again."],duplicate:[409,'Two roster names match. Ask a club officer.'],limit:[429,'Too many tries today. Sign in as a guest for now, or ask a club officer.'],'roster-name':[409,'That name is on the club roster. Use the Club tab.'],'guest-taken':[409,'Another account uses that guest name. Add a middle initial.'],roster:[503,"Can't check the club roster right now. Try again in a minute."]};
 const refused=(code:string)=>fail(MSG[code][0],code,MSG[code][1]);
 export async function name(request:Request){
  if(!sameOrigin(request))return json({error:'This request is not allowed.'},403);
