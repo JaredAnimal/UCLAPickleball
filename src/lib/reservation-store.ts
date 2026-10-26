@@ -1,7 +1,7 @@
 import {waitUntil} from 'cloudflare:workers';
 import {database,timed,type Timing} from './database';
 import {invokeSheet,type SheetConnection} from './sheet-connection';
-import {decide,fingerprint,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
+import {decide,fingerprint,moves,SLOT_FREE,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
 // D1 is the source of truth (migrations/0003). Every applied change bumps data_version; the reservations_copy row is the snapshot page loads read.
 export type Roster={names:string[];officers:string[];at:number;refused?:{names:string[];officers:string[];at:number}};
 export type Snapshot={version:number;data:{ok:true;apiVersion:2;matches:Reservation[];rosterSize:number;at:number};officers:string[]};
@@ -30,15 +30,16 @@ export async function buildSnapshot(t?:Timing,later=false):Promise<Snapshot>{
  const d=database(),[v,w,r]=await timed(t,d.batch<any>(snapshotReads(d))),s=snapshotOf(v.results[0].version,w.results,r.results[0]);
  if(later)return storeLater(s);await timed(t,storeSnapshot(s).run());return s;
 }
-// One try's reads, in this order: receipt, the game row (a create looks itself up by its request id), roster, snapshot, data version. The POST route batches them with its own reads.
+// One try's reads, in this order: receipt, the game row (a create looks itself up by its request id), roster, snapshot, data version, and the games on the date sent (an edit's new date) for the court rules. The POST route batches them with its own reads, before checking the body.
 export function saveReads(req:ReservationRequest):D1PreparedStatement[]{
  const d=database(),id=req.action==='create'?req.requestId:req.id;
- return [d.prepare('SELECT fingerprint FROM requests WHERE request_id=?').bind(req.requestId),d.prepare('SELECT * FROM reservations WHERE id=?').bind(typeof id==='string'?id:''),d.prepare(ROSTER_SQL),d.prepare(SNAPSHOT_SQL),d.prepare(VERSION_SQL)];
+ return [d.prepare('SELECT fingerprint FROM requests WHERE request_id=?').bind(req.requestId),d.prepare('SELECT * FROM reservations WHERE id=?').bind(typeof id==='string'?id:''),d.prepare(ROSTER_SQL),d.prepare(SNAPSHOT_SQL),d.prepare(VERSION_SQL),d.prepare("SELECT json_group_array(json_object('id',id,'start',start_time,'end',end_time,'court',court)) AS g FROM reservations WHERE date=? AND cancelled_at IS NULL AND id NOT GLOB 'practice-*'").bind(typeof (req.reservation as any)?.date==='string'?(req.reservation as any).date:'')];
 }
-const write=(out:Exclude<Outcome,{kind:'none'}>,old:number|undefined,player:string)=>{
+// A create or a moved edit that a parallel save beat to the slot (SLOT_FREE) writes nothing, so it re-reads as a lost race and decide refuses it.
+const write=(out:Exclude<Outcome,{kind:'none'}>,old:number|undefined,player:string,guard:boolean)=>{
  const d=database(),m=out.match,t=Date.now();
- if(out.kind==='insert')return d.prepare('INSERT INTO reservations (id,date,start_time,end_time,court,capacity,host,players,notes,version,updated_at,updated_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING').bind(m.id,m.date,m.start,m.end,m.court,m.capacity,m.host,JSON.stringify(m.players),m.notes,m.version,t,player);
- if(out.kind==='update')return d.prepare('UPDATE reservations SET date=?,start_time=?,end_time=?,court=?,capacity=?,players=?,notes=?,version=?,updated_at=?,updated_by=? WHERE id=? AND version=? AND cancelled_at IS NULL').bind(m.date,m.start,m.end,m.court,m.capacity,JSON.stringify(m.players),m.notes,m.version,t,player,m.id,old);
+ if(out.kind==='insert')return d.prepare(`INSERT INTO reservations (id,date,start_time,end_time,court,capacity,host,players,notes,version,updated_at,updated_by) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12 WHERE ${guard?SLOT_FREE:'1'} ON CONFLICT(id) DO NOTHING`).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,m.host,JSON.stringify(m.players),m.notes,m.version,t,player);
+ if(out.kind==='update')return d.prepare(`UPDATE reservations SET date=?2,start_time=?3,end_time=?4,court=?5,capacity=?6,players=?7,notes=?8,version=?9,updated_at=?10,updated_by=?11 WHERE id=?1 AND version=?12 AND cancelled_at IS NULL${guard?' AND '+SLOT_FREE:''}`).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,JSON.stringify(m.players),m.notes,m.version,t,player,old);
  return d.prepare('UPDATE reservations SET cancelled_at=?,version=?,updated_at=?,updated_by=? WHERE id=? AND version=? AND cancelled_at IS NULL').bind(t,m.version,t,player,m.id,old);
 };
 // The write is guarded by the row version; changes() is the batch's previous statement, so a lost race writes no receipt and no version bump.
@@ -49,13 +50,13 @@ export async function applyRequest(req:ReservationRequest,player:string,first:an
  // Every RuleError leaves with the current snapshot for its 409: the stored one when it isn't behind, else a rebuild; a busy one gets the last write batch's.
  try{
   for(let n=0;n<4;n++){
-   const [receipt,row,roster,snap,ver]=n===0&&first?first:(await timed(t,d.batch<any>(saveReads(req)))).map(x=>x.results[0]),stored=parseSnapshot(snap);
+   const [receipt,row,roster,snap,ver,day]=n===0&&first?first:(await timed(t,d.batch<any>(saveReads(req)))).map(x=>x.results[0]),stored=parseSnapshot(snap);
    latest=async()=>stored&&stored.version>=ver.version?stored:buildSnapshot(t,true);
    if(receipt){if(receipt.fingerprint!==fp)throw new RuleError(MSG.retryDifferent);return {snapshot:await latest(),wrote:false};}
    const rost=parse(roster) as Roster|null,names=rost?.names;if(!names?.length)throw new RuleError(ROSTER_DOWN);
-   const current=row&&(create||row.cancelled_at===null)?toReservation(row):null,out=decide(req,current,{now:laNow(),roster:names,officer:!!rost?.officers?.includes(player)});
+   const current=row&&(create||row.cancelled_at===null)?toReservation(row):null,out=decide(req,current,{now:laNow(),roster:names,officer:!!rost?.officers?.includes(player),games:JSON.parse(day?.g??'[]')});
    if(out.kind==='none')return {snapshot:await latest(),wrote:false};
-   const res=await timed(t,d.batch<any>([write(out,current?.version,player),d.prepare('INSERT INTO requests (request_id,fingerprint,at) SELECT ?,?,? WHERE changes()=1').bind(req.requestId,fp,Date.now()),d.prepare('UPDATE data_version SET version=version+1 WHERE id=1 AND changes()=1'),...snapshotReads(d)])),s=snapshotOf(res[3].results[0].version,res[4].results,res[5].results[0]);
+   const res=await timed(t,d.batch<any>([write(out,current?.version,player,moves(req,current)),d.prepare('INSERT INTO requests (request_id,fingerprint,at) SELECT ?,?,? WHERE changes()=1').bind(req.requestId,fp,Date.now()),d.prepare('UPDATE data_version SET version=version+1 WHERE id=1 AND changes()=1'),...snapshotReads(d)])),s=snapshotOf(res[3].results[0].version,res[4].results,res[5].results[0]);
    // reservations must never get a trigger that writes: its changes would count here and a lost race would look applied.
    if(res[0].meta.changes===1)return {snapshot:storeLater(s),wrote:true};
    latest=async()=>s;
