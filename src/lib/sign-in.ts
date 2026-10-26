@@ -7,8 +7,8 @@ export type Session={hash:string;sub:string;email:string;player:string|null;expi
 export const SESSION_COOKIE='__Host-pb_s';
 const LIFE=7776000,RENEW_AFTER=86400,now=()=>Math.floor(Date.now()/1000);
 const cookie=(token:string,age:number)=>`${SESSION_COOKIE}=${token}; Path=/; Max-Age=${age}; HttpOnly; Secure; SameSite=Lax`;
-const sha256=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
-const tokenOf=(request:Request)=>{const v=(request.headers.get('cookie')||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(SESSION_COOKIE+'='))?.slice(SESSION_COOKIE.length+1);return v&&/^[A-Za-z0-9_-]{43}$/.test(v)?v:null;};
+export const sha256=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
+export const tokenOf=(request:Request)=>{const v=(request.headers.get('cookie')||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(SESSION_COOKIE+'='))?.slice(SESSION_COOKIE.length+1);return v&&/^[A-Za-z0-9_-]{43}$/.test(v)?v:null;};
 export async function createSession(sub:string,email:string,player:string|null):Promise<string>{
  const token=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),t=now();
  await database().prepare('INSERT INTO sessions (token_hash,sub,email,player,expires_at,renewed_at) VALUES (?,?,?,?,?,?)').bind(await sha256(token),sub,email,player,t+LIFE,t).run();

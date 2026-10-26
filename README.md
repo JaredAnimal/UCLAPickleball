@@ -5,7 +5,7 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 ## What is included
 
 - Mobile-friendly calendar showing today and the next five days in the club's Pacific time zone.
-- UCLA Google sign-in; members link a roster name once, guests type first and last name, shown with red `[guest]` labels.
+- Google sign-in (any account); members link a roster name once, guests type first and last name, shown with red `[guest]` labels.
 - Reservations default to Sunset Rec; hosts choose additional slots and manage attendees.
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
 - Shared reservations stored in the club's D1 database, copied every minute to the existing private Google Sheet through its Apps Script bridge; the Sheet's Roster tab supplies the roster and the officers.
@@ -13,7 +13,7 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 - Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. After unlocking, the download button opens the Windows EXE installer hosted on GitHub Releases.
 - Separate password-protected owner settings, encrypted connection storage, Google sign-in sessions, and automated checks.
 
-Players sign in with a UCLA Google account (`g.ucla.edu` or `ucla.edu`). A member links one roster name to the account once; a guest types a first and last name, shown with a red `[guest]` marker and reserved for that account. Officers unlink or block accounts from Members in the profile menu (not other officers); the owner can also use `/admin` → Members. Owner settings use a separate server password and never need Google.
+Players sign in with any Google account (verified email). A member links one roster name to the account once; a guest types a first and last name, shown with a red `[guest]` marker and reserved for that account. Officers unlink or block accounts from Members in the profile menu (not other officers); the owner can also use `/admin` → Members. Owner settings use a separate server password and never need Google.
 
 ## Update the automation bot installer
 

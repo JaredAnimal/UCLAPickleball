@@ -10,9 +10,12 @@ import * as login from './routes/login';
 import * as members from './routes/members';
 import {pruneRequests} from './lib/reservation-store';
 import {runSync} from './lib/sheet-sync';
-import {deleteExpiredSessions} from './lib/sign-in';
+import {deleteExpiredSessions, sha256, tokenOf} from './lib/sign-in';
+import {attemptKey} from './lib/admin-access';
 
 type Handler = (request: Request) => Response | Promise<Response>;
+// A limiter that errors fails open: the API stays up rather than every /api call turning into a 503.
+const over = async (limit: RateLimit | undefined, key: string) => { try { return !!limit && !(await limit.limit({key})).success; } catch { return false; } };
 const routes: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = {
   '/': calendar,
   '/api/reservations': reservations,
@@ -34,8 +37,12 @@ export default {
     let response: Response, asset = false;
     try {
       const path = new URL(request.url).pathname.replace(/\/$/, '') || '/';
-      const route = routes[path];
-      if (route) {
+      const route = routes[path], api = path.startsWith('/api/');
+      // Before any route or D1 call; the cookie is only hashed, never looked up. Per session, plus a per-network ceiling that random cookies can't dodge. No binding (a misconfigured preview) lets requests through.
+      const token = api ? tokenOf(request) : null, net = api ? 'ip:' + await attemptKey(request) : '';
+      if (api && (await over(env.API_LIMIT, token ? 's:' + await sha256(token) : net) || await over(env.API_NET_LIMIT, net))) {
+        response = Response.json({error: 'Too many requests. Wait a minute and try again.'}, {status: 429, headers: {'Cache-Control': 'no-store'}});
+      } else if (route) {
         const method = request.method === 'HEAD' ? 'GET' : request.method;
         const handler = route[method as 'GET' | 'POST'];
         response = handler ? await handler(request) : new Response('Method not allowed', {status:405, headers:{Allow:Object.keys(route).join(', ')}});

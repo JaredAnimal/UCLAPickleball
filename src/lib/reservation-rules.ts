@@ -5,7 +5,7 @@ export type ReservationRequest={action:'create'|'edit'|'join'|'leave'|'cancel'|'
 export type Outcome={kind:'none'}|{kind:'insert'|'update'|'cancel';match:Reservation};
 // A rejection: nothing was applied.
 export class RuleError extends Error{}
-export const MSG={notMember:'Choose a club player or enter a guest name.',guestPractice:'Club practice is NOT open to guests.',practiceId:'Practice IDs are reserved.',practiceEnded:'This practice has ended.',practiceFixed:'Weekly club practices cannot be edited or canceled.',idTaken:'Reservation ID already exists.',gone:'This reservation no longer exists. Refresh the calendar.',hostOnly:'Only the host can change this match or remove players.',started:'This match has already started.',changed:'This match changed while you were editing. Refresh before saving.',capacityBelow:'Capacity cannot be lower than the current signup count.',alreadyHost:'You are already the host.',full:'The last spot has been filled. Refresh the calendar.',badTarget:'Choose an attendee to remove.',badDate:'Choose a valid date.',badTimes:'End time must be after start time.',pastStart:'Choose a future start time.',badText:'Check the location and notes.',badCapacity:'Choose up to 7 other players (8 on the court).',busy:'Another player is updating the calendar. Try again.',retryDifferent:'The retry contains different data. Refresh and try again.'} as const;
+export const MSG={notMember:'Choose a club player or enter a guest name.',guestPractice:'Club practice is NOT open to guests.',practiceId:'Practice IDs are reserved.',practiceEnded:'This practice has ended.',practiceFixed:'Weekly club practices cannot be edited or canceled.',idTaken:'Reservation ID already exists.',gone:'This reservation no longer exists. Refresh the calendar.',hostOnly:'Only the host can change this match or remove players.',started:'This match has already started.',changed:'This match changed while you were editing. Refresh before saving.',capacityBelow:'Capacity cannot be lower than the current signup count.',alreadyHost:'You are already the host.',full:'The last spot has been filled. Refresh the calendar.',badTarget:'Choose an attendee to remove.',badDate:'Choose a valid date.',badTimes:'End time must be after start time.',pastStart:'Choose a future start time.',badText:'Check the location and notes.',badCapacity:'Choose up to 7 other players (8 on the court).',busy:'Another player is updating the calendar. Try again.',retryDifferent:'The retry contains different data. Refresh and try again.',courtFull:'That court already has 4 games then. Pick another time.'} as const;
 const fail=(m:string):never=>{throw new RuleError(m)};
 const DETAILS=['date','start','end','court','capacity','notes'] as const;
 // Names leaving a game: up to 60 strings of up to 120 characters, never the host; names not in it are ignored.
@@ -14,6 +14,8 @@ const LA=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'n
 const parts=(ms:number)=>Object.fromEntries(LA.formatToParts(ms).map(p=>[p.type,p.value]));
 export const laNow=(ms=Date.now()):string=>{const p=parts(ms);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`};
 export const laYesterday=(ms=Date.now()):string=>{const p=parts(ms);return new Date(Date.parse(`${p.year}-${p.month}-${p.day}`)-864e5).toISOString().slice(0,10)};
+// Unix seconds of today's 00:00 in Los Angeles; midnight is 07:00Z (PDT) or 08:00Z (PST) on the local date.
+export const pacificMidnight=(ms=Date.now()):number=>{const p=parts(ms),day=Date.parse(`${p.year}-${p.month}-${p.day}`);return ([7,8].map(h=>day+h*36e5).find(t=>parts(t).hour==='00'&&parts(t).minute==='00'&&parts(t).day===p.day)!)/1000};
 export const isGuest=(name:unknown):boolean=>typeof name==='string'&&name.endsWith(' [guest]')&&name.length<=109&&name.slice(0,-8).trim().split(/\s+/).length>=2&&!/[\[\]\p{C}]/u.test(name.slice(0,-8));
 export function practiceFor(id:unknown):Reservation|null{
  if(typeof id!=='string'||!/^practice-\d{4}-\d{2}-\d{2}$/.test(id))return null;
@@ -21,6 +23,24 @@ export function practiceFor(id:unknown):Reservation|null{
  const day=d.getUTCDay();if(day!==0&&day!==4)return null;
  return {id,kind:'practice',date,start:day===4?'17:00':'15:00',end:day===4?'19:00':'17:00',court:'Club practice',capacity:null,host:'Club practice',players:[],notes:'Weekly club practice. NOT open to guests.',version:1};
 }
+type Slot=Pick<Reservation,'id'|'start'|'end'|'court'>;
+// A court's location key: any court named "Sunset Rec…" ("Sunset Rec · Court 2") is Sunset Rec, else the trimmed lowercase text. LOC is the same in SQL (JS trims more whitespace, so it is never less strict).
+const courtOf=(c:string)=>(c=c.trim().toLowerCase()).startsWith('sunset rec')?'sunset rec':c;
+const LOC=(x:string)=>`CASE WHEN lower(trim(${x})) LIKE 'sunset rec%' THEN 'sunset rec' ELSE lower(trim(${x})) END`;
+// Court rules (SLOT_FREE repeats the 4-limit in SQL for the write): no game at Sunset Rec during that day's practice, checked first; at most 4 other games running at once at the court (start inclusive, end exclusive). `games` are the day's games; practice rows never count.
+export function slotProblem(r:Omit<Slot,'id'>&{date:string},games:Slot[],selfId:string|null):'courtFull'|'practice'|null{
+ const c=courtOf(r.court),p=practiceFor('practice-'+r.date);if(c==='sunset rec'&&p&&r.start<p.end&&p.start<r.end)return 'practice';
+ const others=games.filter(o=>o.id!==selfId&&!o.id.startsWith('practice-')&&courtOf(o.court)===c);
+ return [r.start,...others.map(o=>o.start).filter(t=>r.start<t&&t<r.end)].some(t=>others.filter(o=>o.start<=t&&t<o.end).length>=4)?'courtFull':null;
+}
+// slotProblem's 4-limit in SQL over ?1 id, ?2 date, ?3 start, ?4 end, ?5 court, for the write's WHERE (race-safe): no instant (the start, or another game's start inside this one) where 4 other games already run.
+export const SLOT_FREE=`NOT EXISTS (SELECT 1 FROM (SELECT ?3 AS t UNION SELECT start_time FROM reservations WHERE date=?2 AND cancelled_at IS NULL AND id<>?1 AND id NOT GLOB 'practice-*' AND ${LOC('court')}=${LOC('?5')} AND start_time>?3 AND start_time<?4) p WHERE (SELECT count(*) FROM reservations r WHERE r.date=?2 AND r.cancelled_at IS NULL AND r.id<>?1 AND r.id NOT GLOB 'practice-*' AND ${LOC('r.court')}=${LOC('?5')} AND r.start_time<=p.t AND r.end_time>p.t)>=4)`;
+// The writes reservation-store.ts runs; guard (a create or a moved edit) adds SLOT_FREE. Insert binds id,date,start,end,court,capacity,host,players,notes,version,updated_at,updated_by; update binds id,date,start,end,court,capacity,players,notes,version,updated_at,updated_by, then the old version.
+export const insertSql=(guard:boolean)=>`INSERT INTO reservations (id,date,start_time,end_time,court,capacity,host,players,notes,version,updated_at,updated_by) SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12 WHERE ${guard?SLOT_FREE:'1'} ON CONFLICT(id) DO NOTHING`;
+export const updateSql=(guard:boolean)=>`UPDATE reservations SET date=?2,start_time=?3,end_time=?4,court=?5,capacity=?6,players=?7,notes=?8,version=?9,updated_at=?10,updated_by=?11 WHERE id=?1 AND version=?12 AND cancelled_at IS NULL${guard?' AND '+SLOT_FREE:''}`;
+export function practiceMsg(date:string):string{const p=practiceFor('practice-'+date)!,h=(t:string)=>+t.slice(0,2)%12||12;return `That’s club practice time (${new Date(date+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})} ${h(p.start)}–${h(p.end)} ${+p.end.slice(0,2)<12?'AM':'PM'}). Pick another time.`;}
+// The court rules run on creates and on edits that move a game: a new date, start, end or court (as sent). Notes/capacity-only edits and joins skip them.
+export const moves=(req:ReservationRequest,cur:Reservation|null):boolean=>req.action==='create'||req.action==='edit'&&req.reservation!==undefined&&!!cur&&(['date','start','end','court'] as const).some(k=>(req.reservation as any)?.[k]!==cur[k]);
 export function validate(p:unknown,now:string,rosterSize:number):Draft{
  const q=p as Record<string,any>|null;
  if(!q||typeof q.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(q.date)||isNaN(Date.parse(q.date))||new Date(q.date).toISOString().slice(0,10)!==q.date)return fail(MSG.badDate);
@@ -31,8 +51,8 @@ export function validate(p:unknown,now:string,rosterSize:number):Draft{
  return {date:q.date,start:q.start,end:q.end,court:q.court.trim(),capacity:q.capacity,notes:q.notes.trim()};
 }
 // Mirrors doPost's checks in order; officers (new) get host powers and may remove players from practices. Never mutates `current`; for create, `current` is the row whose id equals requestId.
-export function decide(req:ReservationRequest,current:Reservation|null,ctx:{now:string;roster:string[];officer:boolean}):Outcome{
- const {action,player}=req,{now,roster,officer}=ctx;
+export function decide(req:ReservationRequest,current:Reservation|null,ctx:{now:string;roster:string[];officer:boolean;games?:Slot[]}):Outcome{
+ const {action,player}=req,{now,roster,officer}=ctx,courtRules=(r:Reservation)=>{const x=moves(req,current)&&slotProblem(r,ctx.games??[],r.id);return x?fail(x==='practice'?practiceMsg(r.date):MSG.courtFull):r};
  if(!roster.includes(player)&&!isGuest(player))fail(MSG.notMember);
  if(action==='join'&&practiceFor(req.id)&&isGuest(player))fail(MSG.guestPractice);
  if(action==='create'&&req.requestId.startsWith('practice-'))fail(MSG.practiceId);
@@ -43,7 +63,7 @@ export function decide(req:ReservationRequest,current:Reservation|null,ctx:{now:
  if(practice&&(action==='cancel'||details||(action==='edit'||action==='remove')&&!officer))fail(MSG.practiceFixed);
  if(action==='create'){
   if(match)return match.host===player?{kind:'none'}:fail(MSG.idTaken);
-  return {kind:'insert',match:{id:req.requestId,...validate(req.reservation,now,roster.length),host:player,players:[],version:1}};
+  return {kind:'insert',match:courtRules({id:req.requestId,...validate(req.reservation,now,roster.length),host:player,players:[],version:1})};
  }
  if(!match)return action==='cancel'?{kind:'none'}:fail(MSG.gone);
  if((action==='edit'||action==='cancel'||action==='remove')&&match.host!==player&&!officer)fail(MSG.hostOnly);
@@ -52,7 +72,7 @@ export function decide(req:ReservationRequest,current:Reservation|null,ctx:{now:
  if(action==='edit'){
   if(details&&(req.before!==undefined?DETAILS.some(k=>(req.before as any)?.[k]!==match[k]):Number(req.expectedVersion)!==match.version))fail(MSG.changed);
   const out=leaving(req.remove??[],match.host);next.players=next.players.filter(n=>!out.has(n));
-  if(details||req.remove===undefined){const d=validate(req.reservation,now,roster.length);if(d.capacity<next.players.length)fail(MSG.capacityBelow);Object.assign(next,d);}
+  if(details||req.remove===undefined){const d=validate(req.reservation,now,roster.length);if(d.capacity<next.players.length)fail(MSG.capacityBelow);courtRules(Object.assign(next,d));}
  }else if(action==='join'){
   if(!practice&&match.host===player)fail(MSG.alreadyHost);
   if(!next.players.includes(player)){if(!practice&&next.players.length>=(match.capacity as number))fail(MSG.full);next.players.push(player)}
