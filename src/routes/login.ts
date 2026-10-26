@@ -3,7 +3,7 @@ import {database} from '../lib/database';
 import {readSession} from '../lib/sign-in';
 import {configured} from './auth';
 import {assetVersion} from './calendar';
-const ERRORS:Record<string,string>={account:"Your Google account’s email isn’t verified yet. Verify it with Google, then try again.",blocked:"This account can't sign in here. Ask a club officer.",expired:'Sign-in timed out. Try again.',google:"Google didn't finish signing you in. Try again.",setup:"Sign-in isn't set up yet."};
+const ERRORS:Record<string,string>={account:"Your Google account’s email isn’t verified yet. Verify it with Google, then try again.",busy:'Too many sign-ins from this network. Try again in an hour.',blocked:"This account can't sign in here. Ask a club officer.",expired:'Sign-in timed out. Try again.',google:"Google didn't finish signing you in. Try again.",setup:"Sign-in isn't set up yet."};
 // Stage 'google' without a session, 'name' with one that has no player yet; a saved guest name comes back on the Guest tab, split at the first space.
 export async function GET(request:Request){
  const session=await readSession(request);

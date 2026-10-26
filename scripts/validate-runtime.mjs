@@ -365,7 +365,7 @@ g=await googleSignIn({sub:'sub-member'});{const again=await publicCall('/auth/ca
 // Name step: POST /auth/name links a roster name or saves a guest name.
 {quiet=true;try{
 const R=['Alex Example',"Jose O'Brien",'Pat Twin','Pat-Twin','Sam Spare','Kim Spare'];await putRoster(R);
-const acct=async n=>(await googleSignIn({sub:'n-'+n,email:n+'@g.ucla.edu'})).cookie,nameAs=(cookie,body,o={})=>publicCall('/auth/name',{method:'POST',signedOut:true,headers:{Cookie:cookie,'Content-Type':'application/json',...o.headers},body:typeof body==='string'?body:JSON.stringify(body)}),code=async r=>(await r.json()).code,player=async sub=>(await sessions(sub)).at(-1).player,linkOf=sub=>db.prepare('SELECT * FROM links WHERE sub=?').bind(sub).first();
+const acct=async n=>(await googleSignIn({sub:'n-'+n,email:n+'@g.ucla.edu'})).cookie,nameAs=async(cookie,body,o={})=>{await db.prepare("DELETE FROM admin_attempts WHERE key LIKE 'guest:%'").run();return publicCall('/auth/name',{method:'POST',signedOut:true,headers:{Cookie:cookie,'Content-Type':'application/json',...o.headers},body:typeof body==='string'?body:JSON.stringify(body)})},code=async r=>(await r.json()).code,player=async sub=>(await sessions(sub)).at(-1).player,linkOf=sub=>db.prepare('SELECT * FROM links WHERE sub=?').bind(sub).first();
 const c1=await acct('a');response=await nameAs(c1,{tab:'club',first:'Alex',last:'Example'});assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});assert.equal(await player('n-a'),'Alex Example');{const l=await linkOf('n-a');assert.equal(l.kind,'member');assert.equal(l.name_key,'member:alex example');assert.equal(l.player,'Alex Example');assert.equal(l.email,'a@g.ucla.edu');}
 assert.equal((await googleSignIn({sub:'n-a',email:'a@g.ucla.edu'})).location,'/');passed('a club name on the roster is linked and the next sign-in skips the name step');
 for(const b of [{tab:'guest',first:'Other',last:'Person'},{tab:'club',first:'Sam',last:'Spare'}]){response=await nameAs(c1,b);assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});}{const l=await linkOf('n-a');assert.deepEqual([l.kind,l.player],['member','Alex Example']);}assert.ok((await sessions('n-a')).every(s=>s.player==='Alex Example'));assert.equal((await db.prepare("SELECT count(*) n FROM links WHERE name_key IN ('guest:other person','member:sam spare')").first()).n,0);passed('a session that already has a player changes nothing and replies like a success (double taps, a second tab)');
@@ -405,12 +405,39 @@ await guestLink('login-xss','Jamie </script><b>Visitor [guest]','guest:login xss
 for(const [body,to] of [['next=google','/auth/google'],['','/login'],['next=Google','/login'],['next=https%3A%2F%2Fevil.invalid','/login'],['next=google&next=x','/auth/google']]){s=await googleSignIn({sub:'login-next'});response=await publicCall('/auth/logout',{method:'POST',signedOut:true,headers:{Cookie:s.cookie,Origin:'https://calendar.invalid','Content-Type':'application/x-www-form-urlencoded'},body});assert.equal(response.status,303,body);assert.equal(response.headers.get('location'),to,body);assert.equal(response.headers.get('set-cookie'),'__Host-pb_s=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax');assert.equal((await sessions('login-next')).length,0,body);}
 response=await publicCall('/auth/logout',{method:'POST',signedOut:true,headers:{Origin:'https://calendar.invalid','Content-Length':'1001'},body:'next=google'+'x'.repeat(990)});assert.equal(response.status,303);assert.equal(response.headers.get('location'),'/login');passed('Use a different account (next=google) signs out and restarts Google; any other next lands on /login');
 }finally{quiet=false;}}
+// Sign-up limits: per network (sign-ins, guest names) and per Pacific day (new guests).
+{quiet=true;try{
+const {pacificMidnight}=await import('../src/lib/reservation-rules.ts');await putRoster(['Alex Example','Blair Example','Cap Club']);
+const clear=()=>db.prepare("DELETE FROM admin_attempts WHERE key LIKE 'signin:%' OR key LIKE 'guest:%'").run(),from=ip=>({via:(path,o)=>publicCall(path,{...o,headers:{...o.headers,'cf-connecting-ip':ip}})}),nameAs=(cookie,body,ip='198.51.100.9')=>publicCall('/auth/name',{method:'POST',signedOut:true,headers:{Cookie:cookie,'Content-Type':'application/json','cf-connecting-ip':ip},body:JSON.stringify(body)}),code=async r=>(await r.json()).code,linkOf=sub=>db.prepare('SELECT * FROM links WHERE sub=?').bind(sub).first();
+await clear();
+for(let i=0;i<60;i++)assert.equal((await googleSignIn({sub:'lim-'+i,email:'lim'+i+'@g.ucla.edu'},from('198.51.100.1'))).status,303);
+assert.equal((await googleSignIn({sub:'lim-60'},from('198.51.100.1'))).location,'/login?e=busy');assert.ok(!(await sessions('lim-60')).length);assert.notEqual((await googleSignIn({sub:'lim-other'},from('198.51.100.2'))).location,'/login?e=busy');
+passed('the 61st Google sign-in from one network in an hour is refused');
+await clear();
+for(let i=0;i<5;i++){const c=(await googleSignIn({sub:'lg-'+i,email:'lg'+i+'@g.ucla.edu'})).cookie;assert.equal((await nameAs(c,{tab:'guest',first:i%2?'Alex':'Gus',last:i%2?'Example':'Visitor'+'xyz'[i%3]})).status,i%2?409:200);}
+{const c=(await googleSignIn({sub:'lg-5',email:'lg5@g.ucla.edu'})).cookie,r=await nameAs(c,{tab:'guest',first:'Sixth',last:'Visitor'});assert.equal(r.status,429);assert.equal(await code(r),'network');assert.equal(await linkOf('lg-5'),null);
+ assert.equal((await nameAs(c,{tab:'guest',first:'x'})).status,400);assert.equal((await nameAs(c,{tab:'club',first:'Blair',last:'Example'})).status,200);assert.equal((await linkOf('lg-5')).kind,'member');
+ const o=(await googleSignIn({sub:'lg-o',email:'lgo@g.ucla.edu'})).cookie;assert.equal((await nameAs(o,{tab:'guest',first:'Other',last:'Network'},'198.51.100.10')).status,200);}
+passed('the 6th guest-name attempt from one network in an hour is refused; club-tab names are not counted');
+await clear();
+{const mid=pacificMidnight(),saved=(await db.prepare("SELECT * FROM links WHERE kind='guest' AND linked_at>=?").bind(mid).all()).results;await db.prepare("DELETE FROM links WHERE kind='guest' AND linked_at>=?").bind(mid).run();
+ const seed=(sub,at)=>db.prepare("INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,'guest',?,?,?,?)").bind(sub,'Seed '+sub+' [guest]','guest:seed '+sub,sub+'@g.ucla.edu',at).run();
+ await seed('old-guest',mid-60);for(let i=0;i<19;i++)await seed('seed-'+i,mid+60);
+ const a=(await googleSignIn({sub:'cap-a',email:'capa@g.ucla.edu'})).cookie,b=(await googleSignIn({sub:'cap-b',email:'capb@g.ucla.edu'})).cookie,c=(await googleSignIn({sub:'cap-c',email:'capc@g.ucla.edu'})).cookie;
+ assert.equal((await nameAs(a,{tab:'guest',first:'Twentieth',last:'Guest'})).status,200);
+ const r=await nameAs(b,{tab:'guest',first:'Twentyfirst',last:'Guest'});assert.equal(r.status,429);assert.equal(await code(r),'guest-limit');
+ assert.equal(await linkOf('cap-b'),null);assert.equal((await sessions('cap-b')).at(-1).player,null);
+ assert.equal((await nameAs(c,{tab:'club',first:'Cap',last:'Club'})).status,200);assert.equal((await linkOf('cap-c')).kind,'member');
+ await db.prepare("DELETE FROM links WHERE kind='guest' AND linked_at>=?").bind(mid).run();for(const l of saved)await db.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?)').bind(l.sub,l.kind,l.player,l.name_key,l.email,l.linked_at).run();await db.prepare("DELETE FROM links WHERE sub='old-guest'").run();}
+passed('the 21st new guest of the Pacific day is refused and leaves the session unlinked');
+await clear();
+}finally{quiet=false;}}
 // Members list: the owner and officers use GET/POST on /api/members.
 {quiet=true;try{
 await putRoster(['Mem One','Mem Two']);
 const mem=(b,o={})=>call('/api/members',{method:'POST',headers:{'Content-Type':'application/json',...o.headers},body:typeof b==='string'?b:JSON.stringify(b)}),list=async()=>(await call('/api/members')).json();
 assert.equal((await publicCall('/api/members',{signedOut:true})).status,403);assert.equal((await publicCall('/api/members')).status,403);
-const acct=async n=>(await googleSignIn({sub:'n-'+n,email:n+'@g.ucla.edu'})).cookie,nameAs=(cookie,body)=>publicCall('/auth/name',{method:'POST',signedOut:true,headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(body)}),linkOf=sub=>db.prepare('SELECT * FROM links WHERE sub=?').bind(sub).first(),guestLink=(sub,player,key)=>db.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?)').bind(sub,'guest',player,key,sub+'@g.ucla.edu',1).run();
+const acct=async n=>(await googleSignIn({sub:'n-'+n,email:n+'@g.ucla.edu'})).cookie,nameAs=async(cookie,body)=>{await db.prepare("DELETE FROM admin_attempts WHERE key LIKE 'guest:%'").run();return publicCall('/auth/name',{method:'POST',signedOut:true,headers:{Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify(body)})},linkOf=sub=>db.prepare('SELECT * FROM links WHERE sub=?').bind(sub).first(),guestLink=(sub,player,key)=>db.prepare('INSERT INTO links (sub,kind,player,name_key,email,linked_at) VALUES (?,?,?,?,?,?)').bind(sub,'guest',player,key,sub+'@g.ucla.edu',1).run();
 const m1=await acct('mm1'),m2=await acct('mm2');assert.equal((await nameAs(m1,{tab:'club',first:'Mem',last:'One'})).status,200);assert.equal((await nameAs(m2,{tab:'club',first:'Mem',last:'Two'})).status,200);
 await guestLink('n-mmg','Jamie Visitor [guest]','guest:mm jamie visitor');
 const dev2=(await googleSignIn({sub:'n-mm1',email:'mm1@g.ucla.edu'})).cookie;assert.ok(dev2);

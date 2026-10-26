@@ -14,6 +14,8 @@ const LA=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'n
 const parts=(ms:number)=>Object.fromEntries(LA.formatToParts(ms).map(p=>[p.type,p.value]));
 export const laNow=(ms=Date.now()):string=>{const p=parts(ms);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`};
 export const laYesterday=(ms=Date.now()):string=>{const p=parts(ms);return new Date(Date.parse(`${p.year}-${p.month}-${p.day}`)-864e5).toISOString().slice(0,10)};
+// Unix seconds of today's 00:00 in Los Angeles; midnight is 07:00Z (PDT) or 08:00Z (PST) on the local date.
+export const pacificMidnight=(ms=Date.now()):number=>{const p=parts(ms),day=Date.parse(`${p.year}-${p.month}-${p.day}`);return ([7,8].map(h=>day+h*36e5).find(t=>parts(t).hour==='00'&&parts(t).minute==='00'&&parts(t).day===p.day)!)/1000};
 export const isGuest=(name:unknown):boolean=>typeof name==='string'&&name.endsWith(' [guest]')&&name.length<=109&&name.slice(0,-8).trim().split(/\s+/).length>=2&&!/[\[\]\p{C}]/u.test(name.slice(0,-8));
 export function practiceFor(id:unknown):Reservation|null{
  if(typeof id!=='string'||!/^practice-\d{4}-\d{2}-\d{2}$/.test(id))return null;
