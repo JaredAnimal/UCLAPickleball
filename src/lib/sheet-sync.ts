@@ -17,7 +17,7 @@ async function syncSheet(connection:SheetConnection):Promise<void>{
  const [v,s,w,f,r]=(await d.batch<any>([d.prepare(VERSION_SQL),d.prepare(STATE_SQL),d.prepare(WINDOW_SQL).bind(from),d.prepare("SELECT 1 FROM app_settings WHERE key='reservations_imported'"),d.prepare(ROSTER_SQL)])).map(x=>x.results);
  // Until the import has run, an empty D1 could clear the Sheet's window, so the run only asks for the roster.
  const version:number=v[0].version,state:SyncState=parse(s[0])??fresh,last:Roster|null=parse(r[0]),push=f.length>0&&version>state.pushed;
- const reply=await syncCall(connection,push?{action:'sync',version,from,rows:w.map(row=>({...toReservation(row),updatedAt:new Date(row.updated_at).toISOString()}))}:{action:'sync'})
+ const reply=await syncCall(connection,push?{action:'sync',version,from,rows:w.map(row=>({...(({hostPlays,...r})=>r)(toReservation(row)),updatedAt:new Date(row.updated_at).toISOString()}))}:{action:'sync'})
   .catch(async error=>{await save({...state,error:message(error),failingSince:state.failingSince??now}).run();lastFail=now;throw error;});
  const pushed=push&&reply.mirrored>=version?version:state.pushed,next={names:reply.roster,officers:reply.officers},verdict=rosterVerdict(next,last);
  // A D1 below the script's mirror_version (a fresh database, a Time Travel restore, a local reset against TEST) would have every push skipped: jump past it, and the next run's push applies.

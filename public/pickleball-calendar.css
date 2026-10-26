@@ -55,6 +55,7 @@ dialog::backdrop{background:#11283c66;backdrop-filter:blur(3px)}dialog h2{margin
 label{display:block;font-size:13px;font-weight:600;margin-top:16px}
 input,textarea{display:block;width:100%;min-width:0;min-height:44px;border:1px solid var(--line-ui);border-radius:12px;padding:11px 12px;margin-top:6px;background:var(--surface);color:var(--ink);font-size:16px;font-weight:400;caret-color:var(--blue);accent-color:var(--blue)}
 input[type=date],input[type=time]{-webkit-appearance:none;appearance:none}::-webkit-date-and-time-value{text-align:left}
+.check{display:flex;align-items:center;gap:12px;min-height:44px}.check[hidden]{display:none}.check input{width:22px;min-height:22px;height:22px;margin:0;padding:0;flex:none}
 .stepper{display:flex;align-items:center;gap:8px;margin-top:6px}.stepper input{width:64px;margin:0;text-align:center;font-weight:650;-moz-appearance:textfield}.stepper input::-webkit-inner-spin-button,.stepper input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.stepper .icon{width:44px;padding:0;display:grid;place-items:center}.stepper svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}.stepper .muted{margin-left:4px}
 input:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:0;border-color:var(--blue)}textarea{resize:vertical}
 .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}

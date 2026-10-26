@@ -4,7 +4,7 @@ import {sessionQuery,sessionOf} from '../lib/sign-in';
 import {buildSnapshot,currentSnapshot,applyRequest,ensureImported,viewFor,saveReads,SNAPSHOT_SQL,VERSION_SQL,IMPORTED_SQL,type Snapshot} from '../lib/reservation-store';
 import {RuleError} from '../lib/reservation-rules';
 import {syncSoon} from '../lib/sheet-sync';
-const MAX_OTHER_PLAYERS=7;
+const MAX_OTHER_PLAYERS=8;
 const DOWN='The calendar is temporarily unavailable. Please retry.',SIGN_IN='Sign in before changing reservations.',NOT_CONNECTED='Connect the Google Sheet before saving shared reservations.';
 const CONNECTED_SQL="SELECT 1 AS ok FROM app_settings WHERE key='google_sheets'";
 // One D1 batch reads the session, the snapshot and the data version; a snapshot behind the version is rebuilt for the reply and stored after it, so a failed store never fails the poll.
