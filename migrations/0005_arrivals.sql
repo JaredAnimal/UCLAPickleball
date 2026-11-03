@@ -1,0 +1,1 @@
+ALTER TABLE reservations ADD COLUMN arrivals TEXT NOT NULL DEFAULT '{}';

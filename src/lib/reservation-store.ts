@@ -1,7 +1,7 @@
 import {waitUntil} from 'cloudflare:workers';
 import {database,timed,type Timing} from './database';
 import {invokeSheet,type SheetConnection} from './sheet-connection';
-import {decide,fingerprint,moves,insertSql,updateSql,RuleError,MSG,laNow,laYesterday,practiceFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
+import {decide,fingerprint,moves,insertSql,updateSql,RuleError,MSG,laNow,laYesterday,practiceFor,openPlayFor,type Outcome,type Reservation,type ReservationRequest} from './reservation-rules';
 // D1 is the source of truth (migrations/0003). Every applied change bumps data_version; the reservations_copy row is the snapshot page loads read.
 export type Roster={names:string[];officers:string[];at:number;refused?:{names:string[];officers:string[];at:number}};
 export type Snapshot={version:number;data:{ok:true;apiVersion:2;matches:Reservation[];rosterSize:number;at:number};officers:string[]};
@@ -9,7 +9,7 @@ export type Snapshot={version:number;data:{ok:true;apiVersion:2;matches:Reservat
 export const WINDOW_SQL='SELECT * FROM reservations WHERE date >= ? AND cancelled_at IS NULL ORDER BY date, start_time, id';
 export const ROSTER_DOWN="Can't check the club roster right now. Try again in a minute.";
 export const ROSTER_SQL="SELECT value FROM app_settings WHERE key='roster'",SNAPSHOT_SQL="SELECT value FROM app_settings WHERE key='reservations_copy'",VERSION_SQL='SELECT version FROM data_version WHERE id=1',parse=(row:any)=>row?JSON.parse(row.value):null;
-export const toReservation=(row:Record<string,any>):Reservation=>({id:row.id,date:row.date,start:row.start_time,end:row.end_time,court:row.court,capacity:row.capacity,...(practiceFor(row.id)?{kind:'practice' as const}:{}),host:row.host,hostPlays:row.host_plays!==0,players:JSON.parse(row.players),notes:row.notes,version:row.version});
+export const toReservation=(row:Record<string,any>):Reservation=>({id:row.id,date:row.date,start:row.start_time,end:row.end_time,court:row.court,capacity:row.capacity,...(practiceFor(row.id)?{kind:'practice' as const}:{}),...(openPlayFor(row.id)?{kind:'openplay' as const,arrivals:JSON.parse(row.arrivals||'{}')}:{}),host:row.host,hostPlays:row.host_plays!==0,players:JSON.parse(row.players),notes:row.notes,version:row.version});
 export async function readRoster():Promise<Roster|null>{return parse(await database().prepare(ROSTER_SQL).first());}
 // An old-format copy row ({savedAt,data}) reads as null, so the next page load builds a snapshot from D1.
 export {parse as parseValue};
@@ -33,13 +33,13 @@ export async function buildSnapshot(t?:Timing,later=false):Promise<Snapshot>{
 // One try's reads, in this order: receipt, the game row (a create looks itself up by its request id), roster, snapshot, data version, and the games on the date sent (an edit's new date) for the court rules. The POST route batches them with its own reads, before checking the body.
 export function saveReads(req:ReservationRequest):D1PreparedStatement[]{
  const d=database(),id=req.action==='create'?req.requestId:req.id;
- return [d.prepare('SELECT fingerprint FROM requests WHERE request_id=?').bind(req.requestId),d.prepare('SELECT * FROM reservations WHERE id=?').bind(typeof id==='string'?id:''),d.prepare(ROSTER_SQL),d.prepare(SNAPSHOT_SQL),d.prepare(VERSION_SQL),d.prepare("SELECT json_group_array(json_object('id',id,'start',start_time,'end',end_time,'court',court)) AS g FROM reservations WHERE date=? AND cancelled_at IS NULL AND id NOT GLOB 'practice-*'").bind(typeof (req.reservation as any)?.date==='string'?(req.reservation as any).date:'')];
+ return [d.prepare('SELECT fingerprint FROM requests WHERE request_id=?').bind(req.requestId),d.prepare('SELECT * FROM reservations WHERE id=?').bind(typeof id==='string'?id:''),d.prepare(ROSTER_SQL),d.prepare(SNAPSHOT_SQL),d.prepare(VERSION_SQL),d.prepare("SELECT json_group_array(json_object('id',id,'start',start_time,'end',end_time,'court',court)) AS g FROM reservations WHERE date=? AND cancelled_at IS NULL AND id NOT GLOB 'practice-*' AND id NOT GLOB 'openplay-*'").bind(typeof (req.reservation as any)?.date==='string'?(req.reservation as any).date:'')];
 }
 // A create or a moved edit that a parallel save beat to the slot (SLOT_FREE) writes nothing, so it re-reads as a lost race and decide refuses it.
 const write=(out:Exclude<Outcome,{kind:'none'}>,old:number|undefined,player:string,guard:boolean)=>{
  const d=database(),m=out.match,t=Date.now();
- if(out.kind==='insert')return d.prepare(insertSql(guard)).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,m.host,JSON.stringify(m.players),m.notes,m.version,t,player,m.hostPlays?1:0);
- if(out.kind==='update')return d.prepare(updateSql(guard)).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,JSON.stringify(m.players),m.notes,m.version,t,player,old,m.hostPlays?1:0);
+ if(out.kind==='insert')return d.prepare(insertSql(guard)).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,m.host,JSON.stringify(m.players),m.notes,m.version,t,player,m.hostPlays?1:0,JSON.stringify(m.arrivals??{}));
+ if(out.kind==='update')return d.prepare(updateSql(guard)).bind(m.id,m.date,m.start,m.end,m.court,m.capacity,JSON.stringify(m.players),m.notes,m.version,t,player,old,m.hostPlays?1:0,JSON.stringify(m.arrivals??{}));
  return d.prepare('UPDATE reservations SET cancelled_at=?,version=?,updated_at=?,updated_by=? WHERE id=? AND version=? AND cancelled_at IS NULL').bind(t,m.version,t,player,m.id,old);
 };
 // The write is guarded by the row version; changes() is the batch's previous statement, so a lost race writes no receipt and no version bump.
