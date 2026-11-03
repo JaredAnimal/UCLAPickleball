@@ -51,7 +51,7 @@ function displayRange(){const last=addDays(windowStart,5);const sameMonth=window
 const spots=(m,max)=>{const x=m.hostPlays===false?0:1,total=m.capacity+x,taken=m.players.length+x,me=m.players.includes(user)||x&&m.host===user;return isClub(m)||total>max?'':`<span class="spots" aria-hidden="true">${Array.from({length:total},(_,i)=>`<i class="${i<taken?(me&&!i?'me':'on'):''}"></i>`).join('')}</span>`};
 let listFilter='all';
 const initials=name=>playerName(name).trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase();
-const arrivalRows=m=>{const at=p=>m.arrivals?.[p]||ARRIVALS[0];return [...new Set(m.players.map(at))].sort().map(t=>`<li class="arrivalrow"><span class="atime">${arrivalLabel(t)}</span> <span class="who">${m.players.filter(p=>at(p)===t).map(p=>`<span>${av(p)}${playerHtml(p)}</span>`).join('')}</span></li>`).join('')};
+const arrivalRows=m=>{const at=p=>m.arrivals?.[p]||ARRIVALS[0];return [...new Set(m.players.map(at))].sort().map(t=>`<li class="arrivalrow"><span class="atime">${arrivalLabel(t)}</span> <span class="goers">${m.players.filter(p=>at(p)===t).map(p=>`<span>${av(p)}${playerHtml(p)}</span>`).join('')}</span></li>`).join('')};
 const av=name=>`<span class="av${name===user?' me':''}" aria-hidden="true">${esc(initials(name))}</span>`;
 const icon=d=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`,PENCIL=icon('M4 20h4L19 9l-4-4L4 16zM13 7l4 4'),CROSS=icon('M6 6l12 12M18 6 6 18');
 function render(){
