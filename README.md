@@ -179,7 +179,7 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 - Confirm shared reservations load (the first request imports them from the Sheet) and the Reservations tab matches after a minute.
 - With approved test names, check host creation/removal and member/guest joins, then remove any test reservations.
 - Confirm guests cannot join practice and practice capacity is unlimited.
-- Confirm guests can join open play, the arrival popup works, and no Sunset Rec game can be posted from 8 to 10 PM.
+- Confirm guests can join open play, the arrival popup works, and no Sunset Rec game can be posted from 8 to 10 PM, and no game on any court can end after 8 PM.
 - Check the bot page password, owner settings protection, and phone layout.
 - On a phone, sign in as a member and as a guest, then sign out.
 - Change the destination of the shared short link only after the new deployment works. Keep the old site until cutover is complete.

@@ -17,8 +17,8 @@ This is UCLA Club Pickleball's standalone Cloudflare Worker. GitHub is the sourc
 - Calendar shows today plus five days in advance, using Pacific civil dates and correct daylight-saving transitions.
 - Reservations default to Sunset Rec; the court remains editable. They allow up to 7 other players (8 on a court with the host), or up to 8 when the host books without playing; the Worker enforces it (`src/lib/reservation-rules.ts`).
 - At most 4 games run at once per court (start inclusive, end exclusive; any court starting with "Sunset Rec", like "Sunset Rec · Court 2", counts as Sunset Rec); the Worker enforces it.
-- No games at Sunset Rec (any court starting with "Sunset Rec") during club practice (Thu 5–7 PM, Sun 3–5 PM) or open play (every day 8–10 PM); other courts are fine until 8 PM.
-- Every game (any court) ends by 8 PM; the Worker refuses creates and moved edits that end later (`MSG.lateEnd`). Open play and practice are generated slots, not games.
+- No games at Sunset Rec (any court starting with "Sunset Rec") during club practice (Thu 5–7 PM, Sun 3–5 PM) or open play (every day 8–10 PM); other courts are fine.
+- Every game on any court ends by 8 PM; the Worker refuses creates and moved edits that end later (`MSG.lateEnd`). Practice and open play are generated slots, not games.
 - Thursday practice is 5–7 PM; Sunday practice is 3–5 PM; member attendance is unlimited; guests cannot join practices.
 - Open play is a generated daily slot (`openplay-YYYY-MM-DD`, Sunset Rec, 8–10 PM): anyone signed in can join, guests too; no limit, no host; joinable until 10 PM. Joining needs an arrival time (20:00–21:59, stored in `reservations.arrivals`), shown to signed-in players. Officers can remove people like at practice. Open play rows never count toward the 4-games limit, and the Sheet copy gets names only.
 - Players sign in with any Google account (verified email). Members link one roster name once; guests type first + last, shown with a red `[guest]` marker, and the name is reserved for that account.
