@@ -8,6 +8,7 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 - Google sign-in (any account); members link a roster name once, guests type first and last name, shown with red `[guest]` labels.
 - Reservations default to Sunset Rec; hosts choose additional slots and manage attendees. Up to 7 other players join a game, or 8 when the host books the court without playing ("I’m not playing, just booked the court").
 - At most 4 games at once per court, and none at Sunset Rec during club practice or open play.
+- Every game, on any court, ends by 8 PM.
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
 - Open play every day 8–10 PM at Sunset Rec: anyone signed in can join, guests too, with no limit and no host. Joining asks for an arrival time (8:00, 8:30, 9:00 or a typed time from 8:00 to 9:59 PM), and the card groups players by arrival. Officers can remove people. Open play never counts toward the 4-games limit, and the Sheet copy lists names only.
 - Shared reservations stored in the club's D1 database, copied every minute to the existing private Google Sheet through its Apps Script bridge; the Sheet's Roster tab supplies the roster and the officers.

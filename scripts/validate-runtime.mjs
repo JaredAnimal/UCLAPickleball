@@ -239,11 +239,11 @@ passed('the SQL slot guard agrees with slotProblem on the same games (trimmed, c
 passed('open play: a guest and a member join with arrival times (2 D1 round trips), a rejoin updates the time, leave drops it, a join without a time is refused with 1 round trip');
 {const w=await login('Dana Example'),slot={date:'2099-10-23',start:'20:30',end:'21:30',court:'Sunset Rec',capacity:1,notes:''},mk=(n,o={})=>write(w.token,{action:'create',player:w.player,requestId:'open_play_court_'+String(n).padStart(3,'0'),reservation:{...slot,...o}});
  try{
-  await settled();response=await mk(1);data=await response.json();assert.equal(response.status,409);assert.equal(data.error,'That’s open play time (8–10 PM). Pick another time.');assert.equal(timingOf(response),1);
-  assert.equal((await mk(2,{court:'Pauley'})).status,200);
+  await settled();response=await mk(1);data=await response.json();assert.equal(response.status,409);assert.equal(data.error,'Games must end by 8 PM.');assert.equal(timingOf(response),1);
+  response=await mk(2,{court:'Pauley'});data=await response.json();assert.equal(response.status,409);assert.equal(data.error,'Games must end by 8 PM.');
   assert.equal((await mk(3,{start:'18:00',end:'20:00'})).status,200,'a Sunset Rec game ending at 8 PM saves');
  }finally{await db.prepare("DELETE FROM reservations WHERE date='2099-10-23'").run();}}
-passed('Sunset Rec games overlapping 8-10 PM are refused with 1 round trip; Pauley at that time and Sunset Rec ending 20:00 save');
+passed('games ending after 8 PM are refused with 1 round trip on any court; Sunset Rec ending 20:00 saves');
 {const date='2099-10-23',put=(id,court='Pauley')=>db.prepare("INSERT INTO reservations (id,date,start_time,end_time,court,capacity,host,players,notes,version,updated_at,updated_by) VALUES (?,?,'18:00','19:00',?,NULL,'Open play','[]','',1,0,'harness')").bind(id,date,court).run(),{insertSql}=await import('../src/lib/reservation-rules.ts');
  try{
   for(const id of ['openplay-2099-10-23','openplay-2099-10-23-b','openplay-2099-10-23-c','openplay-2099-10-23-d'])await put(id);
