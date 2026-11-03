@@ -11,7 +11,7 @@ async function call(o,unclear){let r,d;try{r=await fetch('/api/members',{...o,si
 async function act(action,sub,buttons){const n=++seq;$('members-error').textContent='';for(const b of buttons)b.disabled=true;
  try{const d=await call({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,sub})},'Could not confirm the change. Check the list and try again.');if(d.links){if(n===seq)show(d);return;}}catch(e){$('members-error').textContent=e.message;}loadMembers();}
 // Two-tap confirm: the first tap turns the button into its confirm label for 4 s; a second tap within 400 ms (a double-click) is ignored.
-function arm(label,confirm,run){const b=el('button',label);b.type='button';let t,at;b.onclick=()=>{if(t){if(Date.now()-at<400)return;clearTimeout(t);t=0;b.disabled=true;run();return;}at=Date.now();b.textContent=confirm;t=setTimeout(()=>{t=0;b.textContent=label;},4000);};return b;}
+function arm(label,confirm,run,cls){const b=el('button',label);b.type='button';if(cls)b.className=cls;let t,at;b.onclick=()=>{if(t){if(Date.now()-at<400)return;clearTimeout(t);t=0;b.disabled=true;run();return;}at=Date.now();b.textContent=confirm;t=setTimeout(()=>{t=0;b.textContent=label;},4000);};return b;}
 function row(list,main,sub,...buttons){const li=el('li'),box=el('span',main);if(sub)box.append(el('br'),el('small',sub));li.append(box,...buttons);list.append(li);}
 // Shown only when something is wrong: a roster the guard refused, or a Sheet copy that has been behind.
 function health(s){
@@ -25,14 +25,14 @@ function show(d){
  try{
   for(const u of [roster,guests,blocked])u.replaceChildren();
   health(d.sync);
-  const actions=l=>{const bs=[];if(!(d.viewer==='officer'&&l.officer))bs.push(arm('Unlink','Confirm unlink',()=>act('unlink',l.sub,bs)),arm('Unlink & block','Confirm block',()=>act('block',l.sub,bs)));return bs;},tag=l=>l.officer?' · Officer':'';
+  const actions=l=>{const bs=[];if(!(d.viewer==='officer'&&l.officer))bs.push(arm('Unlink','Confirm unlink',()=>act('unlink',l.sub,bs)),arm('Unlink & block','Confirm block',()=>act('block',l.sub,bs),'danger'));return bs;},tag=l=>l.officer?' · Officer':'';
   const members=d.links.filter(l=>l.kind==='member'),linked=members.filter(l=>l.rosterName!=null),used=new Set(linked.map(l=>l.rosterName));
   if(d.roster){for(const l of linked)row(roster,l.rosterName,l.email+' · '+when(l.linkedAt)+tag(l),...actions(l));for(const name of d.roster)if(!used.has(name))row(roster,name,'Not linked');count.textContent=linked.length+' of '+d.roster.length+' linked';}
   else count.textContent="The roster couldn't be loaded, so link status can't be shown.";
   for(const l of d.roster?members.filter(l=>l.rosterName==null):members)row(roster,l.player,l.email+' · '+when(l.linkedAt)+(d.roster?' · Not on roster':'')+tag(l),...actions(l));
   for(const l of d.links.filter(l=>l.kind==='guest'))row(guests,l.player,l.email+' · '+when(l.linkedAt),...actions(l));
   if(!guests.children.length)guests.append(el('li','None'));
-  for(const b of d.blocked)row(blocked,b.email||b.sub,when(b.blockedAt),(()=>{const u=el('button','Unblock');u.type='button';u.onclick=()=>act('unblock',b.sub,[u]);return u;})());
+  for(const b of d.blocked)row(blocked,b.email||b.sub,when(b.blockedAt),(()=>{const u=el('button','Unblock');u.type='button';u.className='danger';u.onclick=()=>act('unblock',b.sub,[u]);return u;})());
   if(!blocked.children.length)blocked.append(el('li','None'));
  }catch(e){fail(e);}
 }

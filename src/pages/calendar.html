@@ -7,11 +7,13 @@
 <title>UCLA Club Pickleball</title>
 <link rel="icon" type="image/png" href="/favicon.png?v=__ASSET_VERSION__">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=__ASSET_VERSION__">
+<link rel="preload" as="font" type="font/woff2" href="/fonts/barlow-400.woff2" crossorigin>
+<link rel="preload" as="font" type="font/woff2" href="/fonts/barlow-semi-condensed-700.woff2" crossorigin>
 <link rel="stylesheet" href="/pickleball-calendar.css?v=__ASSET_VERSION__">
 </head>
 <body>
 <header>
-  <img class="band-photo" src="/team-header-760.webp?v=__ASSET_VERSION__" srcset="/team-header-760.webp?v=__ASSET_VERSION__ 760w, /team-header-1270.webp?v=__ASSET_VERSION__ 1270w" sizes="100vw" alt="" fetchpriority="low" decoding="async" onload="this.classList.add('in')">
+  <img class="band-photo" src="/team-header-760.webp?v=__ASSET_VERSION__" srcset="/team-header-760.webp?v=__ASSET_VERSION__ 760w, /team-header-1270.webp?v=__ASSET_VERSION__ 1270w, /team-header-1670.webp?v=__ASSET_VERSION__ 1670w" sizes="100vw" alt="" fetchpriority="low" decoding="async" onload="this.classList.add('in')">
   <div class="brand">
     <img class="logo" src="/ucla-pickleball-logo.webp?v=__ASSET_VERSION__" alt="" width="56" height="56">
     <div><h1>UCLA Club Pickleball</h1><p>Find a court.</p></div>
@@ -72,6 +74,31 @@
   </form>
 </dialog>
 
+<dialog id="arrival" aria-labelledby="arrivalTitle">
+  <form method="dialog" id="arrivalForm">
+    <h2 id="arrivalTitle">When you finna pull up dawg</h2>
+    <fieldset class="arrivalpick">
+      <legend>Arrival time</legend>
+      <label><input type="radio" name="arrivalPick" value="20:00"> 8:00</label>
+      <label><input type="radio" name="arrivalPick" value="20:30"> 8:30</label>
+      <label><input type="radio" name="arrivalPick" value="21:00"> 9:00</label>
+      <label><input type="radio" name="arrivalPick" value="other"> Other</label>
+    </fieldset>
+    <div class="timefield" id="arrivalOther" role="group" aria-label="Your arrival time" aria-describedby="arrivalError" hidden>
+      <input id="arrivalHour" inputmode="numeric" autocomplete="off" aria-label="Hour">
+      <span aria-hidden="true">:</span>
+      <input id="arrivalMin" inputmode="numeric" autocomplete="off" aria-label="Minutes">
+      <span class="ampm">PM</span>
+    </div>
+    <p id="arrivalError" class="error" role="alert"></p>
+    <div class="modalactions">
+      <button type="button" id="arrivalCancel">Cancel</button>
+      <button id="arrivalSave" class="primary">I'm going</button>
+    </div>
+    <button type="button" id="arrivalLeave" class="textbtn danger" hidden>Not going anymore</button>
+  </form>
+</dialog>
+
 <dialog id="editor" aria-labelledby="editorTitle">
   <h2 id="editorTitle" tabindex="-1" autofocus>Post a reservation</h2>
   <p class="muted small" id="editorLead">Already booked a court? Share it with the club here.</p>
@@ -106,7 +133,7 @@
     <button type="button" id="cancelMatch" class="danger textbtn" hidden>Cancel match</button>
     <div class="modalactions">
       <div class="error" id="matchError" role="alert"></div>
-      <button type="button" id="closeEditor">Close</button>
+      <button type="button" id="closeEditor">Cancel</button>
       <button class="primary" id="saveMatch">Save reservation</button>
     </div>
   </form>
