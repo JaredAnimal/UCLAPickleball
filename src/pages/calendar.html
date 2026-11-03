@@ -72,6 +72,26 @@
   </form>
 </dialog>
 
+<dialog id="arrival" aria-labelledby="arrivalTitle">
+  <form method="dialog" id="arrivalForm">
+    <h2 id="arrivalTitle">When are you getting there?</h2>
+    <fieldset class="arrivalpick">
+      <legend>Arrival time</legend>
+      <label><input type="radio" name="arrivalPick" value="20:00"> 8:00</label>
+      <label><input type="radio" name="arrivalPick" value="20:30"> 8:30</label>
+      <label><input type="radio" name="arrivalPick" value="21:00"> 9:00</label>
+      <label><input type="radio" name="arrivalPick" value="other"> Other</label>
+    </fieldset>
+    <input id="arrivalOther" inputmode="decimal" autocomplete="off" aria-label="Your arrival time" hidden>
+    <p id="arrivalError" class="error" role="alert"></p>
+    <div class="modalactions">
+      <button type="button" id="arrivalCancel">Cancel</button>
+      <button id="arrivalSave" class="primary">I'm going</button>
+    </div>
+    <button type="button" id="arrivalLeave" class="link" hidden>Not going anymore</button>
+  </form>
+</dialog>
+
 <dialog id="editor" aria-labelledby="editorTitle">
   <h2 id="editorTitle" tabindex="-1" autofocus>Post a reservation</h2>
   <p class="muted small" id="editorLead">Already booked a court? Share it with the club here.</p>
