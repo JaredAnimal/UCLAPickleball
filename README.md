@@ -7,8 +7,9 @@ The club match calendar, prepared for GitHub and standalone Cloudflare Workers h
 - Mobile-friendly calendar showing today and the next five days in the club's Pacific time zone.
 - Google sign-in (any account); members link a roster name once, guests type first and last name, shown with red `[guest]` labels.
 - Reservations default to Sunset Rec; hosts choose additional slots and manage attendees. Up to 7 other players join a game, or 8 when the host books the court without playing ("I’m not playing, just booked the court").
-- At most 4 games at once per court, and none at Sunset Rec during club practice.
+- At most 4 games at once per court, and none at Sunset Rec during club practice or open play.
 - Thursday 5–7 PM and Sunday 3–5 PM club practices, with unlimited member attendance and no guest signups.
+- Open play every day 8–10 PM at Sunset Rec: anyone signed in can join, guests too, with no limit and no host. Joining asks for an arrival time (8:00, 8:30, 9:00 or a typed time from 8:00 to 9:59 PM), and the card groups players by arrival. Officers can remove people. Open play never counts toward the 4-games limit, and the Sheet copy lists names only.
 - Shared reservations stored in the club's D1 database, copied every minute to the existing private Google Sheet through its Apps Script bridge; the Sheet's Roster tab supplies the roster and the officers.
 - Club officers (marked on the Roster tab) can edit, cancel and remove attendees on every game, and manage Members from the profile menu. Hosts and officers do all of it from one pencil on the card.
 - Password-protected automation bot page with the blue `[BETA]` label inside its calendar button. After unlocking, the download button opens the Windows EXE installer hosted on GitHub Releases.
@@ -177,6 +178,7 @@ Connect this GitHub repository to a Codex cloud environment. Let Codex install d
 - Confirm shared reservations load (the first request imports them from the Sheet) and the Reservations tab matches after a minute.
 - With approved test names, check host creation/removal and member/guest joins, then remove any test reservations.
 - Confirm guests cannot join practice and practice capacity is unlimited.
+- Confirm guests can join open play, the arrival popup works, and no Sunset Rec game can be posted from 8 to 10 PM.
 - Check the bot page password, owner settings protection, and phone layout.
 - On a phone, sign in as a member and as a guest, then sign out.
 - Change the destination of the shared short link only after the new deployment works. Keep the old site until cutover is complete.
@@ -218,4 +220,4 @@ D1 Time Travel keeps 7 days of history on the free plan (`wrangler d1 time-trave
 | `src/lib/pickleball-config.ts` | Private runtime spreadsheet configuration |
 | `src/lib/pickleball-apps-script.gs` | Google-side source copy |
 | `scripts/` | Worker rules tests, Apps Script and calendar VM tests, Miniflare API tests |
-| `migrations/` | D1 schema for settings, owner login throttling, sign-in sessions, links and blocked accounts, and (`0003`) reservations, receipts, the data version and sync state |
+| `migrations/` | D1 schema for settings, owner login throttling, sign-in sessions, links and blocked accounts, and (`0003`) reservations, receipts, the data version and sync state, and (`0005`) open play arrival times |
