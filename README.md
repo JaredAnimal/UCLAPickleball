@@ -206,6 +206,7 @@ D1 Time Travel keeps 7 days of history on the free plan (`wrangler d1 time-trave
 | `src/worker.ts` | HTTP routes, static asset serving, and the scheduled handler that runs the minute sync |
 | `src/pages/calendar.html` | Calendar page and forms |
 | `public/pickleball-calendar.js` / `.css` | Calendar behavior and responsive styles |
+| `public/fonts/` | Self-hosted Barlow and Barlow Semi Condensed (latin woff2, `OFL.txt` license); cached for a year by name, so rename a file to replace it |
 | `src/routes/` | Reservation, owner setup, and bot handlers |
 | `src/lib/reservation-rules.ts` | The reservation and host/officer rules the Worker enforces |
 | `src/lib/reservation-store.ts` | Reservations in D1: saves, receipts, data version, snapshot, first import |

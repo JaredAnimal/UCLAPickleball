@@ -105,7 +105,7 @@ const pageHtml=await (await publicCall('/')).text();const versioned=[...new Set(
 let version;{const html=await (await publicCall('/')).text();version=html.match(/pickleball-calendar\.js\?v=([A-Za-z0-9-]+)"/)?.[1];assert.match(html,/pickleball-calendar\.css\?v=[A-Za-z0-9-]+"/);assert.match(html,/pickleball-calendar\.js\?v=[A-Za-z0-9-]+"/);assert.ok(!html.includes('__ASSET_VERSION__'));}
 response=await publicCall('/pickleball-calendar.js?v='+version);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/immutable/);
 response=await publicCall('/pickleball-calendar.js?v=abc');assert.doesNotMatch(response.headers.get('cache-control')||'',/immutable/);
-response=await publicCall('/pickleball-calendar.js');assert.doesNotMatch(response.headers.get('cache-control')||'',/immutable/);
+response=await publicCall('/pickleball-calendar.js');assert.doesNotMatch(response.headers.get('cache-control')||'',/immutable/);response=await publicCall('/fonts/barlow-400.woff2');assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/immutable/);
 passed('versioned static files are cached for a year; unversioned ones revalidate');
 response=await publicCall('/',{method:'HEAD'});assert.equal(response.status,200);assert.equal(await response.text(),'');passed('HEAD requests return headers without a body');
 {const [a,b]=[await login('Alex Example'),await login('Blair Example')],k=listCalls,n=forwarded.length,rid='d1_steps_match_00001',draft={...payload.reservation,court:'D1 court'};let v=await dataVersion(),i=0,d,r;

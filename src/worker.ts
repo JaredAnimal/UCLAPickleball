@@ -55,7 +55,9 @@ export default {
       response = new Response('The calendar is temporarily unavailable. Please retry.', {status:503, headers:{'Cache-Control':'no-store'}});
     }
     const headers = new Headers(response.headers);
-    if (asset && response.status===200 && new URL(request.url).searchParams.get('v')===calendar.assetVersion()) headers.set('Cache-Control','public, max-age=31536000, immutable');
+    const url = new URL(request.url);
+    // Font files never change under a name (rename to replace one), so they cache like versioned files.
+    if (asset && response.status===200 && (url.searchParams.get('v')===calendar.assetVersion() || url.pathname.startsWith('/fonts/'))) headers.set('Cache-Control','public, max-age=31536000, immutable');
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     headers.set('X-Frame-Options', 'SAMEORIGIN');
