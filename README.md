@@ -162,7 +162,7 @@ After the first successful deployment, connect this repository under the Cloudfl
 | Build command | `pnpm check` |
 | Deploy command | `pnpm deploy` |
 
-Use Node.js 22 or later in the build environment. Configure runtime secrets on the Worker; GitHub CI needs no production credentials. Disable branch preview deployments until you have a separate preview database and a separate test Sheet connection, so previews cannot modify real reservations.
+Use Node.js 22 or later in the build environment. Configure runtime secrets on the Worker; GitHub CI needs no production credentials. Disable branch preview deployments until you have a separate preview database and a separate test Sheet connection, so previews cannot modify real reservations. `wrangler.jsonc` sets `"preview_urls": false`, which also turns off preview URLs that already exist: old branch previews (the Codex branches) kept serving pre-sign-in code against the live D1 and club Sheet. Every `/api/` reply carries `X-Asset-Version`, and an open calendar tab that sees a newer deploy reloads itself once, never while a sheet is open or a save is pending.
 
 Approve and merge tested pull requests into `main` to update production. Database migrations are deliberately explicit; if a future change adds one, apply it using `pnpm db:remote` as part of that release.
 

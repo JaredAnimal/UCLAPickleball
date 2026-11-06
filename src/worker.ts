@@ -58,6 +58,8 @@ export default {
     const url = new URL(request.url);
     // Font files never change under a name (rename to replace one), so they cache like versioned files.
     if (asset && response.status===200 && (url.searchParams.get('v')===calendar.assetVersion() || url.pathname.startsWith('/fonts/'))) headers.set('Cache-Control','public, max-age=31536000, immutable');
+    // An open tab compares this with its own ?v= and reloads onto a new deploy (pickleball-calendar.js).
+    if (url.pathname.startsWith('/api/')) headers.set('X-Asset-Version', calendar.assetVersion());
     headers.set('X-Content-Type-Options', 'nosniff');
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     headers.set('X-Frame-Options', 'SAMEORIGIN');
