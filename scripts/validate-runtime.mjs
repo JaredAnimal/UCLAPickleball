@@ -107,6 +107,9 @@ response=await publicCall('/pickleball-calendar.js?v='+version);assert.equal(res
 response=await publicCall('/pickleball-calendar.js?v=abc');assert.doesNotMatch(response.headers.get('cache-control')||'',/immutable/);
 response=await publicCall('/pickleball-calendar.js');assert.doesNotMatch(response.headers.get('cache-control')||'',/immutable/);response=await publicCall('/fonts/barlow-400.woff2');assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/immutable/);
 passed('versioned static files are cached for a year; unversioned ones revalidate');
+response=await publicCall('/api/reservations');assert.equal(response.headers.get('x-asset-version'),version);assert.equal((await publicCall('/api/reservations',{signedOut:true})).headers.get('x-asset-version'),version);assert.equal((await publicCall('/')).headers.get('x-asset-version'),null);
+assert.match(readFileSync('wrangler.jsonc','utf8'),/^\s*"preview_urls":\s*false,?\s*$/m,'preview URLs stay off: old previews ran pre-sign-in code against the live D1');
+passed('API replies carry the deploy version open tabs compare with; preview URLs are off');
 response=await publicCall('/',{method:'HEAD'});assert.equal(response.status,200);assert.equal(await response.text(),'');passed('HEAD requests return headers without a body');
 {const [a,b]=[await login('Alex Example'),await login('Blair Example')],k=listCalls,n=forwarded.length,rid='d1_steps_match_00001',draft={...payload.reservation,court:'D1 court'};let v=await dataVersion(),i=0,d,r;
  const step=async(who,body,version)=>{response=await write(who.token,{player:who.player,requestId:'d1_step_request_'+i++,...body});d=await response.json();assert.equal(response.status,200,JSON.stringify(d));r=await rowOf(rid);assert.equal(r.version,version,body.action);assert.equal(await dataVersion(),++v,body.action);assert.equal(d.rosterSize,CLUB.length);assert.ok(d.matches.some(m=>m.id===payload.requestId),'replies carry every match');};

@@ -8,6 +8,8 @@
     "nodejs_compat"
   ],
   "workers_dev": true,
+  // Off: old branch previews (e.g. the Codex branches) kept serving pre-sign-in code against the live D1 and club Sheet.
+  "preview_urls": false,
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
