@@ -4,7 +4,7 @@ export async function GET(request:Request){
  try{
   if(!await hasBotAccess(request,'public-bot'))return new Response(null,{status:303,headers:{Location:'/bot','Cache-Control':'private, no-store'}});
   return new Response(null,{status:302,headers:{
-   Location:'https://github.com/JaredAnimal/UCLAPickleball/releases/download/picklebot-v0.2.6/Picklebot-Setup-0.2.6.exe',
+   Location:'https://github.com/JaredAnimal/UCLAPickleball/releases/download/picklebot-v0.2.7/Picklebot-Setup-0.2.7.exe',
    'Cache-Control':'private, no-store',
   }});
  }catch{

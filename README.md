@@ -20,9 +20,9 @@ Players sign in with any Google account (verified email). A member links one ros
 
 ## Update the automation bot installer
 
-The current installer is **Picklebot-Setup-0.2.2.exe**, attached to the `picklebot-v0.2.2` GitHub release. Release assets support installers larger than GitHub's repository file limit and keep the binary out of the Worker bundle.
+The current installer is **Picklebot-Setup-0.2.7.exe**, attached to the `picklebot-v0.2.7` GitHub release. This version fixes the post-Duo handoff when UCLA returns to its homepage: it handles the cookie notice before requiring the calendar and opens the booking page. It also removes the Test installation button and allows any launch minute from 00:00 through 22:59, targeting the next whole hour; midnight reservations remain unsupported. Release assets support installers larger than GitHub's repository file limit and keep the binary out of the Worker bundle.
 
-The password-protected `/bot/download` route redirects unlocked visitors to the release asset. The release asset itself is public, like this repository. The button shows `.EXE` and the disclaimer “Windows only.” directly underneath. For a later version, upload the new release asset, update the URL in `src/routes/bot-download.ts`, and push directly to `main` to publish through the existing Cloudflare build connection.
+The password-protected `/bot/download` route redirects unlocked visitors to the release asset. The release asset itself is public, like this repository. The button shows the version and `.EXE`, with the disclaimer “Windows only.” directly underneath. For a later version, upload and verify the new release asset, update the URL in both `src/routes/bot-download.ts` and `scripts/validate-runtime.mjs`, update the displayed version in `src/routes/bot.ts`, run `pnpm check`, and push directly to `main` to publish through the existing Cloudflare build connection.
 
 ## Moving from the current site
 
